@@ -22,4 +22,3 @@ export const mockVerifiedAnalysis = [
   { category: 'Home & Kitchen', verifiedAvg: 4.3, nonVerifiedAvg: 4.8, gap: 0.5, verifiedCount: 37000 },
 ];
 
-export const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
