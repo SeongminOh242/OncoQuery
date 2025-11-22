@@ -32,7 +32,6 @@ OncoQuery/
 | GET    | `/api/bot-data`         | Category bot % list    |
 | GET    | `/api/trending-products`| Trending products      |
 | GET    | `/api/verified-analysis`| Verified vs non‑verified stats |
-| GET    | `/api/colors`           | UI color palette       |
 
 ## Setup & Run
 ### Frontend
@@ -68,12 +67,11 @@ useEffect(() => {
 - Avoid coupling chart components directly to raw fetch; normalize data via a small adapter if data shape changes.
 
 ## Current TODO (Focused)
-1. Connect frontend to backend API (remove direct mock imports in React pages).
+1. Connect frontend to backend API (remove direct mock imports in React pages and make it receive from backend).
 2. Create local MongoDB database and collections for reviews/products/verification.
 3. Host MongoDB remotely on GCP (e.g., Atlas alternative or VM deployment) for persistence.
 4. Implement backend query endpoints against MongoDB for each dashboard case (bot stats, trending, verified analysis).
-
-Small scale note: No large-scale concerns yet (sharding, heavy caching, workers). Deployment (Docker + simple hosting) can follow after tasks 1–4.
+5. Deployment (Docker + simple hosting) can follow after tasks 1–4.
 
 ## Environment Variables (Planned)
 `PORT` – backend port override
