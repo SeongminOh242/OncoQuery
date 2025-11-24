@@ -1,0 +1,4 @@
+marketplace	customer_id	review_id	product_id	product_parent	product_title	product_category	star_rating	helpful_votes	total_votes	vine	verified_purchase	review_headline	review_body	review_date
+US	10000001	R_SAMPLE_1	P_SAMPLE_1	111111111	Sample Product One	Personal_Care_Appliances	5	2	2	N	Y	Excellent	Works great, highly recommend.	2025-10-01
+US	10000002	R_SAMPLE_2	P_SAMPLE_2	222222222	Sample Product Two	Personal_Care_Appliances	3	0	0	N	N	Average	It is okay, could be better.	2025-10-02
+US	10000003	R_SAMPLE_3	P_SAMPLE_3	333333333	Sample Product Three	Personal_Care_Appliances	1	1	3	N	Y	Disappointed	Stopped working after a few uses.	2025-10-03
