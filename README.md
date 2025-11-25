@@ -50,6 +50,32 @@ npm run dev
 ```
 Runs on `http://localhost:5000` (or `PORT` from `.env`).
 
+### Backend API Testing
+To run backend API tests (using `__tests__/api.test.js`):
+
+1. Ensure your `.env` file in `backend/` contains the following variables:
+	```
+	MONGO_URI=mongodb://localhost:27017
+	MONGO_DB_NAME=oncoquery
+	```
+	(Adjust values for your MongoDB setup as needed.)
+
+2. Run tests from the `backend` directory:
+	```cmd
+	set NODE_ENV=test && npm test
+	```
+	This will:
+	- Use your `.env` for MongoDB connection
+	- Run all Vitest tests in `__tests__` (including `api.test.js`)
+	- Print API responses to the terminal for inspection
+
+If you want to always set `NODE_ENV=test` for tests, update the `test` script in `backend/package.json` to:
+```
+"test": "set NODE_ENV=test && vitest run"
+```
+
+Test output will show counts and sample data for each API route.
+
 ### Connecting Frontend to API (Next Step)
 Replace direct mock imports with fetches (e.g., in page components):
 ```javascript
@@ -75,7 +101,8 @@ useEffect(() => {
 
 ## Environment Variables (Planned)
 `PORT` – backend port override
-`MONGODB_URI` – database connection string (future)
+`MONGO_URI` – MongoDB connection string (required for backend tests)
+`MONGO_DB_NAME` – MongoDB database name (required for backend tests)
 
 ## Future Enhancements
 - Real-time updates via WebSockets for live trending movement.
