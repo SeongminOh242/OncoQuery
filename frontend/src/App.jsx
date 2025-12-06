@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, TrendingUp, AlertTriangle, Star, CheckCircle, ThumbsUp, ThumbsDown, MessageSquare, Loader } from 'lucide-react';
 import { api } from './services/api';
 import StatCard from './components/StatCard';
+import OverviewPage from './pages/OverviewPage';
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -12,7 +13,6 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
 
   // State for all data
-  const [overviewStats, setOverviewStats] = useState(null);
   const [botReviews, setBotReviews] = useState([]);
   const [botStats, setBotStats] = useState(null);
   const [trendingProducts, setTrendingProducts] = useState([]);
@@ -27,27 +27,6 @@ function App() {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, dateRange, activeTab, reviewsSubTab]);
-
-  // Load overview data
-  useEffect(() => {
-    const loadOverviewData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const stats = await api.getOverviewStats();
-        setOverviewStats(stats);
-      } catch (err) {
-        setError(err.message);
-        console.error('Error loading overview data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (activeTab === 'overview') {
-      loadOverviewData();
-    }
-  }, [activeTab]);
 
   // Load bot detection data
   useEffect(() => {
@@ -141,61 +120,6 @@ function App() {
       loadReviewsData();
     }
   }, [activeTab, selectedCategory, currentPage, reviewsSubTab]);
-
-  const renderOverview = () => {
-    if (loading) return <LoadingSpinner />;
-    if (error) return <ErrorMessage message={error} />;
-    if (!overviewStats) return <EmptyState message="No data available" />;
-
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard 
-            icon={<Star className="w-6 h-6" />} 
-            title="Total Reviews" 
-            value={overviewStats.totalReviews?.toLocaleString() || '0'} 
-            color="blue" 
-          />
-          <StatCard 
-            icon={<AlertTriangle className="w-6 h-6" />} 
-            title="Suspicious Reviews" 
-            value={overviewStats.suspiciousReviews?.toLocaleString() || '0'} 
-            color="red" 
-          />
-          <StatCard 
-            icon={<TrendingUp className="w-6 h-6" />} 
-            title="Trending Products" 
-            value={overviewStats.trendingProducts?.toLocaleString() || '0'} 
-            color="green" 
-          />
-          <StatCard 
-            icon={<CheckCircle className="w-6 h-6" />} 
-            title="Verified Purchases" 
-            value={`${overviewStats.verifiedPercentage || 0}%`} 
-            color="purple" 
-          />
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Database Statistics</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="border-l-4 border-blue-500 pl-4">
-              <div className="text-sm text-gray-500">Total Products</div>
-              <div className="text-2xl font-bold">{overviewStats.totalProducts?.toLocaleString() || '0'}</div>
-            </div>
-            <div className="border-l-4 border-green-500 pl-4">
-              <div className="text-sm text-gray-500">Total Customers</div>
-              <div className="text-2xl font-bold">{overviewStats.totalCustomers?.toLocaleString() || '0'}</div>
-            </div>
-            <div className="border-l-4 border-purple-500 pl-4">
-              <div className="text-sm text-gray-500">Categories Analyzed</div>
-              <div className="text-2xl font-bold">{overviewStats.totalCategories || '40+'}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   const renderBotDetection = () => {
     if (loading) return <LoadingSpinner />;
@@ -447,7 +371,7 @@ function App() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'overview' && <OverviewPage />}
         {activeTab === 'bot-detection' && renderBotDetection()}
         {activeTab === 'trending' && renderTrendingProducts()}
         {activeTab === 'verified' && renderVerifiedAnalysis()}

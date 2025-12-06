@@ -1,45 +1,99 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import StatCard from '../components/StatCard';
-import { Star, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Star, AlertTriangle, TrendingUp, CheckCircle, Loader } from 'lucide-react';
+import { api } from '../services/api';
 
-function OverviewPage({ mockBotData, mockVerifiedAnalysis }) {
+function OverviewPage() {
+  const [overviewStats, setOverviewStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadOverviewData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const stats = await api.getOverviewStats();
+        setOverviewStats(stats);
+      } catch (err) {
+        setError(err.message);
+        console.error('Error loading overview data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOverviewData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">Error: {error}</p>
+      </div>
+    );
+  }
+
+  if (!overviewStats) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+        <p className="text-gray-600">No data available</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard icon={<Star className="w-6 h-6" />} title="Total Reviews" value="5.2M" color="blue" />
-        <StatCard icon={<AlertTriangle className="w-6 h-6" />} title="Suspicious Reviews" value="127K" color="red" />
-        <StatCard icon={<TrendingUp className="w-6 h-6" />} title="Trending Products" value="2,341" color="green" />
-        <StatCard icon={<CheckCircle className="w-6 h-6" />} title="Verified Purchases" value="78%" color="purple" />
+        <StatCard 
+          icon={<Star className="w-6 h-6" />} 
+          title="Total Reviews" 
+          value={overviewStats.totalReviews?.toLocaleString() || '0'} 
+          color="blue" 
+        />
+        <StatCard 
+          icon={<AlertTriangle className="w-6 h-6" />} 
+          title="Suspicious Reviews" 
+          value={overviewStats.suspiciousReviews?.toLocaleString() || '0'} 
+          color="red" 
+        />
+        <StatCard 
+          icon={<TrendingUp className="w-6 h-6" />} 
+          title="Trending Products" 
+          value={overviewStats.trendingProducts?.toLocaleString() || '0'} 
+          color="green" 
+        />
+        <StatCard 
+          icon={<CheckCircle className="w-6 h-6" />} 
+          title="Verified Purchases" 
+          value={`${overviewStats.verifiedPercentage || 0}%`} 
+          color="purple" 
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Bot Detection by Category</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={mockBotData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
-              <YAxis label={{ value: 'Bot %', angle: -90, position: 'insideLeft' }} />
-              <Tooltip />
-              <Bar dataKey="botPercentage" fill="#ef4444" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Verified vs Non-Verified Ratings</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={mockVerifiedAnalysis}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
-              <YAxis domain={[3.5, 5]} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="verifiedAvg" stroke="#10b981" name="Verified" strokeWidth={2} />
-              <Line type="monotone" dataKey="nonVerifiedAvg" stroke="#ef4444" name="Non-Verified" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold mb-4">Database Statistics</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="border-l-4 border-blue-500 pl-4">
+            <div className="text-sm text-gray-500">Total Products</div>
+            <div className="text-2xl font-bold">{overviewStats.totalProducts?.toLocaleString() || '0'}</div>
+          </div>
+          <div className="border-l-4 border-green-500 pl-4">
+            <div className="text-sm text-gray-500">Total Customers</div>
+            <div className="text-2xl font-bold">{overviewStats.totalCustomers?.toLocaleString() || '0'}</div>
+          </div>
+          <div className="border-l-4 border-purple-500 pl-4">
+            <div className="text-sm text-gray-500">Categories Analyzed</div>
+            <div className="text-2xl font-bold">{overviewStats.totalCategories || '40+'}</div>
+          </div>
         </div>
       </div>
     </div>
