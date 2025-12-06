@@ -1,92 +1,105 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import React, { useState, useEffect } from 'react';
+import { Loader } from 'lucide-react';
+import { api } from '../services/api';
 
-function VerifiedAnalysisPage({ mockVerifiedAnalysis }) {
+function VerifiedAnalysisPage() {
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [verifiedReviews, setVerifiedReviews] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [queryTime, setQueryTime] = useState(null);
+
+  const categories = ['All', 'Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Sports'];
+
+  useEffect(() => {
+    const loadVerifiedData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const startTime = performance.now();
+        const reviews = await api.getVerifiedPurchaseReviews(selectedCategory, currentPage);
+        const endTime = performance.now();
+        setQueryTime(((endTime - startTime) / 1000).toFixed(2));
+        setVerifiedReviews(Array.isArray(reviews) ? reviews : []);
+      } catch (err) {
+        setError(err.message);
+        console.error('Error loading verified data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadVerifiedData();
+  }, [selectedCategory, currentPage]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">Error: {error}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {queryTime && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+          <span className="text-sm text-blue-800">
+            ⏱️ Query completed in <strong>{queryTime}s</strong>
+          </span>
+        </div>
+      )}
+      
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-6">Verified Purchase Impact Analysis</h3>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-4">Average Rating Comparison</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={mockVerifiedAnalysis}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
-                <YAxis domain={[3.5, 5]} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="verifiedAvg" fill="#10b981" name="Verified" />
-                <Bar dataKey="nonVerifiedAvg" fill="#ef4444" name="Non-Verified" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-4">Rating Gap by Category</h4>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={mockVerifiedAnalysis}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} />
-                <YAxis label={{ value: 'Rating Gap', angle: -90, position: 'insideLeft' }} />
-                <Tooltip />
-                <Bar dataKey="gap" fill="#f59e0b">
-                  {mockVerifiedAnalysis.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.gap > 0.4 ? '#ef4444' : '#f59e0b'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-semibold">Verified Purchase Analysis</h3>
+          <select
+            className="border rounded px-3 py-2"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+          >
+            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
         </div>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-start">
-            <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 mr-3" />
-            <div>
-              <h4 className="font-medium text-yellow-900 mb-1">Products with High Rating Disparities</h4>
-              <p className="text-sm text-yellow-800">
-                Found 234 products with rating gaps &gt;0.5 stars between verified and non-verified reviews.
-                These products may have inflated ratings from suspicious sources.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">Category Summary</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified Avg</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Non-Verified Avg</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gap</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {verifiedReviews.slice(0, 50).map((review) => (
+                <tr key={review.review_id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-mono text-gray-900">{review.review_id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{review.product_title?.slice(0, 60)}...</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{review.product_category}</td>
+                  <td className="px-4 py-3 text-sm">{review.star_rating}</td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      review.verified_purchase === 'Y' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {review.verified_purchase === 'Y' ? 'Yes' : 'No'}
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {mockVerifiedAnalysis.map((item) => (
-                  <tr key={item.category} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.category}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{item.verifiedAvg}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{item.nonVerifiedAvg}</td>
-                    <td className="px-4 py-3 text-sm font-medium">{item.gap}</td>
-                    <td className="px-4 py-3 text-sm">
-                      {item.gap > 0.4 ? (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-medium">High Risk</span>
-                      ) : (
-                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">Normal</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

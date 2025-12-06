@@ -7,13 +7,17 @@ function OverviewPage() {
   const [overviewStats, setOverviewStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [queryTime, setQueryTime] = useState(null);
 
   useEffect(() => {
     const loadOverviewData = async () => {
       try {
         setLoading(true);
         setError(null);
+        const startTime = performance.now();
         const stats = await api.getOverviewStats();
+        const endTime = performance.now();
+        setQueryTime(((endTime - startTime) / 1000).toFixed(2));
         setOverviewStats(stats);
       } catch (err) {
         setError(err.message);
@@ -52,6 +56,14 @@ function OverviewPage() {
 
   return (
     <div className="space-y-6">
+      {queryTime && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+          <span className="text-sm text-blue-800">
+            ⏱️ Query completed in <strong>{queryTime}s</strong>
+          </span>
+        </div>
+      )}
+      
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard 
           icon={<Star className="w-6 h-6" />} 

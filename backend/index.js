@@ -34,25 +34,19 @@ async function getDb() {
 app.get("/api/bot-data", async (req, res) => {
   try {
     const database = await getDb();
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
     const filter = {};
     if (req.query.category && req.query.category !== 'All') {
       filter.product_category = req.query.category;
     }
 
-    const cursor = database.collection("reviews").find(filter)
-      .project({ product_title: 1, product_category: 1, star_rating: 1, review_date: 1, verified_purchase: 1, review_id: 1, product_id: 1, helpful_votes: 1, total_votes: 1 })
-      .skip(skip)
-      .limit(limit);
-
     const [data, total] = await Promise.all([
-      cursor.toArray(),
-      database.collection("reviews").estimatedDocumentCount()
+      database.collection("reviews").find(filter)
+        .project({ product_title: 1, product_category: 1, star_rating: 1, review_date: 1, verified_purchase: 1, review_id: 1, product_id: 1, helpful_votes: 1, total_votes: 1 })
+        .toArray(),
+      database.collection("reviews").countDocuments(filter)
     ]);
 
-    res.json({ page, limit, total, data });
+    res.json({ total, data });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bot data" });
   }
@@ -61,19 +55,16 @@ app.get("/api/bot-data", async (req, res) => {
 app.get("/api/trending-products", async (req, res) => {
   try {
     const database = await getDb();
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
     
-    // Sample-based approach: fetch recent reviews and group by product (much faster than full aggregation)
-    const recentReviews = await database.collection("reviews")
+    // Full dataset approach: process all reviews and group by product
+    const allReviews = await database.collection("reviews")
       .find({})
       .project({ product_id: 1, product_title: 1, product_category: 1, star_rating: 1 })
-      .sort({ _id: -1 })
-      .limit(50000)  // sample last 50k reviews
       .toArray();
     
     // Group by product_id and compute stats
     const productMap = {};
-    recentReviews.forEach(doc => {
+    allReviews.forEach(doc => {
       const pid = doc.product_id;
       if (!productMap[pid]) {
         productMap[pid] = {
@@ -97,8 +88,7 @@ app.get("/api/trending-products", async (req, res) => {
         review_count: p.count,
         avg_rating: p.ratings.length > 0 ? (p.ratings.reduce((a, b) => a + b, 0) / p.ratings.length).toFixed(2) : 0
       }))
-      .sort((a, b) => b.review_count - a.review_count)
-      .slice(0, limit);
+      .sort((a, b) => b.review_count - a.review_count);
     
     res.json(trending);
   } catch (err) {
@@ -112,21 +102,17 @@ app.get("/api/stats/overview", async (req, res) => {
     const database = await getDb();
     const collection = database.collection("reviews");
     
-    // Use estimatedDocumentCount (very fast) instead of countDocuments (slow on large collections)
-    const totalReviews = await collection.estimatedDocumentCount();
+    // Get exact counts from full dataset
+    const totalReviews = await collection.countDocuments({});
+    const verifiedReviews = await collection.countDocuments({ verified_purchase: "Y" });
     
-    // Sample-based estimate for verified reviews (much faster than full count)
-    const sampleSize = 5000;
-    const sample = await collection.find({})
-      .project({ verified_purchase: 1, star_rating: 1 })
-      .limit(sampleSize)
+    // Calculate average rating from all reviews
+    const allReviews = await collection.find({})
+      .project({ star_rating: 1 })
       .toArray();
     
-    const verifiedInSample = sample.filter(d => d.verified_purchase === "Y").length;
-    const verifiedReviews = Math.round((verifiedInSample / sampleSize) * totalReviews);
-    
-    const ratingSum = sample.reduce((sum, doc) => sum + parseInt(doc.star_rating || 0), 0);
-    const averageRating = sample.length > 0 ? (ratingSum / sample.length).toFixed(2) : 0;
+    const ratingSum = allReviews.reduce((sum, doc) => sum + parseInt(doc.star_rating || 0), 0);
+    const averageRating = allReviews.length > 0 ? (ratingSum / allReviews.length).toFixed(2) : 0;
     
     res.json({
       totalReviews,
@@ -143,18 +129,15 @@ app.get("/api/stats/overview", async (req, res) => {
 app.get("/api/verified-analysis", async (req, res) => {
   try {
     const database = await getDb();
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-    const skip = (page - 1) * limit;
     const filter = { verified_purchase: "Y" };
-    const cursor = database.collection("reviews").find(filter)
-      .project({ product_title: 1, product_category: 1, star_rating: 1, review_date: 1, review_id: 1, product_id: 1 })
-      .skip(skip)
-      .limit(limit);
-    const data = await cursor.toArray();
-    // Use estimatedDocumentCount as a fast approximate total (avoids full collection scan)
-    const total = await database.collection("reviews").estimatedDocumentCount();
-    res.json({ page, limit, total, data });
+    const [data, total] = await Promise.all([
+      database.collection("reviews").find(filter)
+        .project({ product_title: 1, product_category: 1, star_rating: 1, review_date: 1, review_id: 1, product_id: 1 })
+        .toArray(),
+      database.collection("reviews").countDocuments(filter)
+    ]);
+    
+    res.json({ total, data });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch verified analysis" });
   }
