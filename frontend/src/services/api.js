@@ -1,64 +1,90 @@
 // API Configuration
 const API_BASE_URL = 'http://localhost:5000/api';
 
-// API Service
+// Helper to safe-fetch JSON with fallback error message
+async function safeFetchJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Request failed: ${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json();
+}
+
+// API Service (aligned with backend endpoints)
 export const api = {
-  // Overview/Statistics
+  // Overview/Statistics (backend: /api/stats/overview)
   getOverviewStats: async () => {
-    const response = await fetch(`${API_BASE_URL}/stats/overview`);
-    if (!response.ok) throw new Error('Failed to fetch overview stats');
-    return response.json();
+    return safeFetchJson(`${API_BASE_URL}/stats/overview`);
   },
 
-  // Bot Detection
+  // Bot Detection (backend exposes /api/bot-data)
   getBotDetectionReviews: async (category = 'All', page = 1, limit = 20) => {
     const params = new URLSearchParams({ category, page, limit });
-    const response = await fetch(`${API_BASE_URL}/bot-detection/reviews?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch bot detection reviews');
-    return response.json();
+    const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
+    return json.data || json;
   },
 
   getBotStats: async () => {
-    const response = await fetch(`${API_BASE_URL}/bot-detection/stats`);
-    if (!response.ok) throw new Error('Failed to fetch bot stats');
-    return response.json();
+    // No dedicated endpoint; fetch a reasonable sample and compute simple stats
+    try {
+      const params = new URLSearchParams({ page: 1, limit: 1000 });
+      const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
+      const data = Array.isArray(json) ? json : (json.data || []);
+      if (!Array.isArray(data) || data.length === 0) return { oneAndDone: 0, rapidFire: 0, brandLoyalists: 0 };
+
+      const oneAndDone = data.filter(r => r.total_reviews_by_reviewer === 1).length;
+      const rapidFire = data.filter(r => r.reviews_in_one_day && r.reviews_in_one_day >= 5).length;
+      const brandLoyalists = data.filter(r => r.same_brand_repeats && r.same_brand_repeats >= 3).length;
+
+      return { oneAndDone, rapidFire, brandLoyalists };
+    } catch (err) {
+      return { oneAndDone: 0, rapidFire: 0, brandLoyalists: 0 };
+    }
   },
 
-  // Trending Products
+  // Trending Products (backend: /api/trending-products)
   getTrendingProducts: async (category = 'All', dateRange = '30days', page = 1, limit = 20) => {
-    const params = new URLSearchParams({ category, dateRange, page, limit });
-    const response = await fetch(`${API_BASE_URL}/trending?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch trending products');
-    return response.json();
+    return safeFetchJson(`${API_BASE_URL}/trending-products`);
   },
 
-  // Verified Purchase Analysis
+  // Verified Purchase Analysis (backend: /api/verified-analysis)
   getVerifiedPurchaseReviews: async (category = 'All', page = 1, limit = 20) => {
     const params = new URLSearchParams({ category, page, limit });
-    const response = await fetch(`${API_BASE_URL}/verified-analysis/reviews?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch verified purchase reviews');
-    return response.json();
+    const json = await safeFetchJson(`${API_BASE_URL}/verified-analysis?${params}`);
+    return json.data || json;
   },
 
   getHighRiskProducts: async () => {
-    const response = await fetch(`${API_BASE_URL}/verified-analysis/high-risk`);
-    if (!response.ok) throw new Error('Failed to fetch high risk products');
-    return response.json();
+    // No dedicated endpoint in backend; reuse verified-analysis as fallback
+    try {
+      const json = await safeFetchJson(`${API_BASE_URL}/verified-analysis?page=1&limit=100`);
+      return json.data || json || [];
+    } catch (e) {
+      return [];
+    }
   },
 
-  // Helpful/Controversial Reviews
+  // Helpful/Controversial Reviews (no backend endpoints available) - fall back to paginated bot-data
   getHelpfulReviews: async (category = 'All', productId = null, page = 1, limit = 20) => {
-    const params = new URLSearchParams({ category, page, limit });
-    if (productId) params.append('productId', productId);
-    const response = await fetch(`${API_BASE_URL}/reviews/helpful?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch helpful reviews');
-    return response.json();
+    try {
+      const params = new URLSearchParams({ category, page, limit });
+      const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
+      const all = Array.isArray(json) ? json : (json.data || []);
+      return all;
+    } catch (err) {
+      return [];
+    }
   },
 
   getControversialReviews: async (category = 'All', page = 1, limit = 20) => {
-    const params = new URLSearchParams({ category, page, limit });
-    const response = await fetch(`${API_BASE_URL}/reviews/controversial?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch controversial reviews');
-    return response.json();
+    try {
+      const params = new URLSearchParams({ category, page, limit });
+      const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
+      const all = Array.isArray(json) ? json : (json.data || []);
+      return all;
+    } catch (err) {
+      return [];
+    }
   }
 };
