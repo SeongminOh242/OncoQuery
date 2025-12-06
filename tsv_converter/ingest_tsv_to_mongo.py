@@ -6,6 +6,10 @@ import time
 import re
 from typing import List, Dict, Any, Iterable
 
+# Set CSV field size limit to the maximum C long value (portable)
+# On many platforms (including Windows), C long is 32-bit, so use 2**31 - 1
+csv.field_size_limit(2**31 - 1)
+
 try:
     from pymongo import MongoClient, UpdateOne
 except ImportError:
