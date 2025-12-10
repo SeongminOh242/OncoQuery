@@ -14,48 +14,56 @@ async function safeFetchJson(url) {
 // API Service (aligned with backend endpoints)
 export const api = {
   // Overview/Statistics (backend: /api/stats/overview)
-  getOverviewStats: async () => {
-    return safeFetchJson(`${API_BASE_URL}/stats/overview`);
+  getOverviewStats: async (weeksBack = 4) => {
+    const params = new URLSearchParams({ weeksBack: weeksBack.toString() });
+    return safeFetchJson(`${API_BASE_URL}/stats/overview?${params}`);
   },
 
-  // Bot Detection (backend exposes /api/bot-data)
+  // Bot Detection (backend exposes /api/bot-data and /api/bot-stats)
   getBotDetectionReviews: async (category = 'All', page = 1) => {
     const params = new URLSearchParams({ category, page });
     const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
     return json.data || json;
   },
 
-  getBotStats: async () => {
-    // No dedicated endpoint; fetch all bot data and compute simple stats
+  getBotStats: async (weeksBack = 4) => {
+    const params = new URLSearchParams({ weeksBack: weeksBack.toString() });
     try {
-      const json = await safeFetchJson(`${API_BASE_URL}/bot-data`);
-      const data = Array.isArray(json) ? json : (json.data || []);
-      if (!Array.isArray(data) || data.length === 0) return { oneAndDone: 0, rapidFire: 0, brandLoyalists: 0 };
-
-      const oneAndDone = data.filter(r => r.total_reviews_by_reviewer === 1).length;
-      const rapidFire = data.filter(r => r.reviews_in_one_day && r.reviews_in_one_day >= 5).length;
-      const brandLoyalists = data.filter(r => r.same_brand_repeats && r.same_brand_repeats >= 3).length;
-
-      return { oneAndDone, rapidFire, brandLoyalists };
+      const json = await safeFetchJson(`${API_BASE_URL}/bot-stats?${params}`);
+      return json;
     } catch (err) {
-      return { oneAndDone: 0, rapidFire: 0, brandLoyalists: 0 };
+      console.error('Failed to fetch bot stats:', err);
+      return { oneAndDone: 0, rapidFire: 0, message: 'Error loading stats' };
     }
   },
 
   // Trending Products (backend: /api/trending-products)
-  getTrendingProducts: async (category = 'All', dateRange = '30days', page = 1) => {
-    return safeFetchJson(`${API_BASE_URL}/trending-products`);
+  getTrendingProducts: async (weeksBack = 4, page = 1) => {
+    const params = new URLSearchParams({ weeksBack: weeksBack.toString(), page: page.toString() });
+    const json = await safeFetchJson(`${API_BASE_URL}/trending-products?${params}`);
+    return json.data || json || [];
   },
 
-  // Verified Purchase Analysis (backend: /api/verified-analysis)
-  getVerifiedPurchaseReviews: async (category = 'All', page = 1) => {
-    const params = new URLSearchParams({ category, page });
+  // Verified Purchase Analysis (backend: /api/verified-analysis and /api/verified-stats)
+  getVerifiedPurchaseReviews: async (weeksBack = 4, page = 1) => {
+    const params = new URLSearchParams({ weeksBack: weeksBack.toString(), page: page.toString() });
     const json = await safeFetchJson(`${API_BASE_URL}/verified-analysis?${params}`);
     return json.data || json;
   },
 
+  getVerifiedStats: async (weeksBack = 4) => {
+    const params = new URLSearchParams({ weeksBack: weeksBack.toString() });
+    try {
+      const json = await safeFetchJson(`${API_BASE_URL}/verified-stats?${params}`);
+      return json;
+    } catch (err) {
+      console.error('Failed to fetch verified stats:', err);
+      return { comparisonStats: [], message: 'Error loading stats' };
+    }
+  },
+
   getHighRiskProducts: async () => {
-    // No dedicated endpoint in backend; reuse verified-analysis as fallback
+    // Reuse verified-analysis as fallback
     try {
       const json = await safeFetchJson(`${API_BASE_URL}/verified-analysis`);
       return json.data || json || [];
@@ -64,26 +72,43 @@ export const api = {
     }
   },
 
-  // Helpful/Controversial Reviews (no backend endpoints available) - fall back to all bot-data
+  // Helpful/Controversial Reviews (backend: /api/helpful-reviews and /api/controversial-reviews)
   getHelpfulReviews: async (category = 'All', productId = null, page = 1) => {
     try {
-      const params = new URLSearchParams({ category, page });
-      const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
-      const all = Array.isArray(json) ? json : (json.data || []);
-      return all;
+      const params = new URLSearchParams({ page: page.toString() });
+      if (category && category !== 'All') {
+        params.append('category', category);
+      }
+      const json = await safeFetchJson(`${API_BASE_URL}/helpful-reviews?${params}`);
+      return json.data || json || [];
     } catch (err) {
+      console.error('Failed to fetch helpful reviews:', err);
       return [];
     }
   },
 
   getControversialReviews: async (category = 'All', page = 1) => {
     try {
-      const params = new URLSearchParams({ category, page });
-      const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
-      const all = Array.isArray(json) ? json : (json.data || []);
-      return all;
+      const params = new URLSearchParams({ page: page.toString() });
+      if (category && category !== 'All') {
+        params.append('category', category);
+      }
+      const json = await safeFetchJson(`${API_BASE_URL}/controversial-reviews?${params}`);
+      return json.data || json || [];
     } catch (err) {
+      console.error('Failed to fetch controversial reviews:', err);
       return [];
+    }
+  },
+
+  // Get distinct categories from database
+  getCategories: async () => {
+    try {
+      const json = await safeFetchJson(`${API_BASE_URL}/categories`);
+      return json.categories || ['All'];
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+      return ['All'];
     }
   }
 };

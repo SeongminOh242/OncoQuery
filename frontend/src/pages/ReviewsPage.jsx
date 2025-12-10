@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ThumbsUp, ThumbsDown, Star, CheckCircle, AlertTriangle, Loader, MessageSquare } from 'lucide-react';
+import React, { useState } from 'react';
+import { ThumbsUp, ThumbsDown, Star, CheckCircle, AlertTriangle, Loader, MessageSquare, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function ReviewsPage() {
@@ -10,127 +10,144 @@ function ReviewsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
+  const [hasRun, setHasRun] = useState(false);
 
   const categories = ['All', 'Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Sports'];
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedCategory, reviewsSubTab]);
-
-  useEffect(() => {
-    const loadReviewsData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const startTime = performance.now();
-        
-        if (reviewsSubTab === 'helpful') {
-          const reviewData = await api.getHelpfulReviews(selectedCategory, null, currentPage);
-          setReviews(Array.isArray(reviewData) ? reviewData : []);
-        } else {
-          const reviewData = await api.getControversialReviews(selectedCategory, currentPage);
-          setReviews(Array.isArray(reviewData) ? reviewData : []);
-        }
-        
-        const endTime = performance.now();
-        setQueryTime(((endTime - startTime) / 1000).toFixed(2));
-      } catch (err) {
-        setError(err.message);
-        console.error('Error loading reviews data:', err);
-      } finally {
-        setLoading(false);
+  const runQuery = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const startTime = performance.now();
+      
+      if (reviewsSubTab === 'helpful') {
+        const reviewData = await api.getHelpfulReviews(selectedCategory, null, currentPage);
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
+      } else {
+        const reviewData = await api.getControversialReviews(selectedCategory, currentPage);
+        setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
-    };
-
-    loadReviewsData();
-  }, [selectedCategory, reviewsSubTab, currentPage]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error: {error}</p>
-      </div>
-    );
-  }
+      
+      const endTime = performance.now();
+      setQueryTime(((endTime - startTime) / 1000).toFixed(2));
+      setHasRun(true);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error loading reviews data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {queryTime && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
-          <span className="text-sm text-blue-800">
-            ⏱️ Query completed in <strong>{queryTime}s</strong>
+      {/* Query Controls */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-xl font-semibold mb-4">Query Settings</h3>
+        <div className="space-y-4">
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Review Type
+              </label>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setReviewsSubTab('helpful')}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    reviewsSubTab === 'helpful'
+                      ? 'bg-green-100 text-green-700 border-2 border-green-300'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <ThumbsUp className="w-4 h-4 inline mr-2" />
+                  Most Helpful
+                </button>
+                <button
+                  onClick={() => setReviewsSubTab('controversial')}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    reviewsSubTab === 'controversial'
+                      ? 'bg-orange-100 text-orange-700 border-2 border-orange-300'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <ThumbsDown className="w-4 h-4 inline mr-2" />
+                  Most Controversial
+                </button>
+              </div>
+            </div>
+            <div className="w-48">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Category Filter
+              </label>
+              <select
+                className="w-full border rounded-lg px-4 py-2"
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={runQuery}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
+            >
+              <Play className="w-4 h-4" />
+              Run Query
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center h-32">
+          <Loader className="w-8 h-8 animate-spin text-blue-500" />
+          <span className="ml-2 text-gray-600">Running query...</span>
+        </div>
+      )}
+
+      {queryTime && hasRun && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <span className="text-sm text-green-800">
+            ✅ Query completed in <strong>{queryTime}s</strong>
           </span>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setReviewsSubTab('helpful')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                reviewsSubTab === 'helpful'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <ThumbsUp className="w-4 h-4 inline mr-2" />
-              Most Helpful
-            </button>
-            <button
-              onClick={() => setReviewsSubTab('controversial')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                reviewsSubTab === 'controversial'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <ThumbsDown className="w-4 h-4 inline mr-2" />
-              Most Controversial
-            </button>
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">Error: {error}</p>
+        </div>
+      )}
+
+      {hasRun && !loading && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              {reviewsSubTab === 'helpful'
+                ? 'Showing top helpful reviews per rating level (1-5 stars) with minimum 5 helpful votes'
+                : 'Showing controversial reviews with 10+ total votes based on unhelpful vote ratio'}
+            </p>
           </div>
-          <select
-            className="border rounded px-3 py-2"
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-          >
-            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-          </select>
-        </div>
 
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
-            {reviewsSubTab === 'helpful'
-              ? 'Showing top helpful reviews per rating level (1-5 stars) with minimum 5 helpful votes'
-              : 'Showing controversial reviews with 10+ total votes based on unhelpful vote ratio'}
-          </p>
-        </div>
+          <div className="space-y-4">
+            {reviews && reviews.length > 0 ? (
+              reviews.map((review, idx) => (
+                <ReviewCard
+                  key={review.review_id || idx}
+                  review={review}
+                  showHelpfulStats={true}
+                  showControversialStats={reviewsSubTab === 'controversial'}
+                />
+              ))
+            ) : (
+              <EmptyState message={`No ${reviewsSubTab} reviews found`} />
+            )}
+          </div>
 
-        <div className="space-y-4">
-          {reviews && reviews.length > 0 ? (
-            reviews.map((review, idx) => (
-              <ReviewCard
-                key={review.review_id || idx}
-                review={review}
-                showHelpfulStats={true}
-                showControversialStats={reviewsSubTab === 'controversial'}
-              />
-            ))
-          ) : (
-            <EmptyState message={`No ${reviewsSubTab} reviews found`} />
-          )}
+          <Pagination currentPage={currentPage} onPageChange={setCurrentPage} onRunQuery={runQuery} />
         </div>
-
-        <Pagination currentPage={currentPage} onPageChange={setCurrentPage} />
-      </div>
+      )}
     </div>
   );
 }
@@ -209,11 +226,17 @@ function ReviewCard({ review, showHelpfulStats, showControversialStats }) {
   );
 }
 
-function Pagination({ currentPage, onPageChange }) {
+function Pagination({ currentPage, onPageChange, onRunQuery }) {
+  const handlePageChange = async (newPage) => {
+    onPageChange(newPage);
+    // Wait for state to update, then run query
+    setTimeout(() => onRunQuery(), 0);
+  };
+
   return (
     <div className="flex justify-center items-center gap-4 mt-6">
       <button
-        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+        onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
         disabled={currentPage === 1}
         className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
       >
@@ -221,7 +244,7 @@ function Pagination({ currentPage, onPageChange }) {
       </button>
       <span className="text-gray-600">Page {currentPage}</span>
       <button
-        onClick={() => onPageChange(currentPage + 1)}
+        onClick={() => handlePageChange(currentPage + 1)}
         className="px-4 py-2 border rounded-lg hover:bg-gray-50"
       >
         Next
