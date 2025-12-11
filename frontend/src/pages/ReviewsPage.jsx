@@ -6,6 +6,7 @@ function ReviewsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [reviewsSubTab, setReviewsSubTab] = useState('helpful');
   const [currentPage, setCurrentPage] = useState(1);
+  const [weeksBack, setWeeksBack] = useState(null); // null = all data, or set to a number for specific weeks
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -21,10 +22,10 @@ function ReviewsPage() {
       const startTime = performance.now();
       
       if (reviewsSubTab === 'helpful') {
-        const reviewData = await api.getHelpfulReviews(selectedCategory, null, currentPage);
+        const reviewData = await api.getHelpfulReviews(selectedCategory, null, currentPage, weeksBack);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
       } else {
-        const reviewData = await api.getControversialReviews(selectedCategory, currentPage);
+        const reviewData = await api.getControversialReviews(selectedCategory, currentPage, weeksBack);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
       
@@ -74,6 +75,25 @@ function ReviewsPage() {
                   Most Controversial
                 </button>
               </div>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Time Range (from Aug 31, 2015 backwards)
+              </label>
+              <select
+                className="w-full border rounded-lg px-4 py-2"
+                value={weeksBack || ''}
+                onChange={(e) => setWeeksBack(e.target.value === '' ? null : parseInt(e.target.value))}
+              >
+                <option value="">All Time</option>
+                <option value={1}>Last 1 Week</option>
+                <option value={2}>Last 2 Weeks</option>
+                <option value={4}>Last 4 Weeks</option>
+                <option value={8}>Last 8 Weeks</option>
+                <option value={12}>Last 12 Weeks</option>
+                <option value={26}>Last 26 Weeks (6 months)</option>
+                <option value={52}>Last 52 Weeks (1 year)</option>
+              </select>
             </div>
             <div className="w-48">
               <label className="block text-sm font-medium text-gray-700 mb-2">
