@@ -1,24 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function BotDetectionPage() {
   const [weeksBack, setWeeksBack] = useState(4);
+  const [year, setYear] = useState('');
+  const [month, setMonth] = useState('');
+  const [week, setWeek] = useState('');
+  const [category, setCategory] = useState('All');
+  const [categories, setCategories] = useState(['All']);
+  const [botReviews, setBotReviews] = useState([]);
   const [botStats, setBotStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
 
-  const runQuery = async () => {
+  // Fetch categories on mount
+  useEffect(() => {
+    api.getCategories().then(cats => {
+      let arr = cats;
+      if (cats && typeof cats === 'object' && !Array.isArray(cats) && cats.categories) {
+        arr = cats.categories;
+      }
+      if (Array.isArray(arr) && arr.length > 0) {
+        setCategories(arr);
+      } else {
+        setCategories(['All']);
+        console.error('Categories API did not return a valid array:', cats);
+      }
+    }).catch(err => {
+      setCategories(['All']);
+      console.error('Error fetching categories:', err);
+    });
+  }, []);
+
+  const runQuery = async (newPage = page) => {
     try {
       setLoading(true);
       setError(null);
       const startTime = performance.now();
-      const stats = await api.getBotStats(weeksBack);
+      // Build params for API
+      let params = { weeksBack };
+      if (year) params.year = year;
+      if (month) params.month = month;
+      if (week) params.week = week;
+      if (category && category !== 'All') params.category = category;
+      const [reviewsRes, stats] = await Promise.all([
+        api.getBotDetectionReviews(params, newPage),
+        api.getBotStats(weeksBack)
+      ]);
       const endTime = performance.now();
+      let reviews = Array.isArray(reviewsRes) ? reviewsRes : (reviewsRes.data || []);
       setQueryTime(((endTime - startTime) / 1000).toFixed(2));
+      setBotReviews(reviews.data || reviews || []);
       setBotStats(stats);
+      setTotalPages(reviewsRes.totalPages || 1);
+      setHasMore(reviewsRes.hasMore || false);
       setHasRun(true);
     } catch (err) {
       setError(err.message);
@@ -26,6 +67,11 @@ function BotDetectionPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    runQuery(newPage);
   };
 
   return (
@@ -38,19 +84,60 @@ function BotDetectionPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Time Range (from Aug 31, 2015 backwards)
             </label>
-            <select
-              className="w-full border rounded-lg px-4 py-2"
-              value={weeksBack}
-              onChange={(e) => setWeeksBack(parseInt(e.target.value))}
-            >
-              <option value={1}>Last 1 Week</option>
-              <option value={2}>Last 2 Weeks</option>
-              <option value={4}>Last 4 Weeks</option>
-              <option value={8}>Last 8 Weeks</option>
-              <option value={12}>Last 12 Weeks</option>
-              <option value={26}>Last 26 Weeks (6 months)</option>
-              <option value={52}>Last 52 Weeks (1 year)</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+              >
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={year}
+                onChange={e => setYear(e.target.value)}
+              >
+                <option value="">Year</option>
+                {Array.from({length: 10}, (_, i) => 2015 - i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={month}
+                onChange={e => setMonth(e.target.value)}
+              >
+                <option value="">Month</option>
+                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={week}
+                onChange={e => setWeek(e.target.value)}
+              >
+                <option value="">Week</option>
+                {Array.from({length: 5}, (_, i) => i + 1).map(w => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={weeksBack}
+                onChange={e => setWeeksBack(parseInt(e.target.value))}
+              >
+                <option value={1}>Last 1 Week</option>
+                <option value={2}>Last 2 Weeks</option>
+                <option value={4}>Last 4 Weeks</option>
+                <option value={8}>Last 8 Weeks</option>
+                <option value={12}>Last 12 Weeks</option>
+                <option value={26}>Last 26 Weeks (6 months)</option>
+                <option value={52}>Last 52 Weeks (1 year)</option>
+              </select>
+            </div>
           </div>
           <button
             onClick={runQuery}
@@ -100,6 +187,72 @@ function BotDetectionPage() {
               {((botStats.oneAndDone || 0) + (botStats.rapidFire || 0)).toLocaleString()}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Bot Reviews Table */}
+      {hasRun && !loading && botReviews.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-xl font-semibold mb-4">Flagged Bot-Like Reviews</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User Review Count</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {botReviews.map((review) => (
+                  <tr key={review.review_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-mono text-gray-900">{review.review_id}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-900">{review.customer_id || 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm text-blue-700 font-bold">{review.user_review_count ?? 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{review.product_title?.slice(0, 60)}...</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{review.product_category}</td>
+                    <td className="px-4 py-3 text-sm">{review.star_rating}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{review.review_date ? new Date(review.review_date).toLocaleDateString() : 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        review.verified_purchase === 'Y' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {review.verified_purchase === 'Y' ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Pagination Controls */}
+          <div className="flex justify-center items-center gap-4 mt-6">
+            <button
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <span className="text-gray-600">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => handlePageChange(page + 1)}
+              disabled={!hasMore && page >= totalPages}
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+      {hasRun && !loading && botReviews.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">No flagged bot reviews found for the selected filters.</p>
         </div>
       )}
     </div>

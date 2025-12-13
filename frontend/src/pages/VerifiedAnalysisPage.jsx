@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -7,6 +7,8 @@ function VerifiedAnalysisPage() {
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [week, setWeek] = useState('');
+  const [category, setCategory] = useState('All');
+  const [categories, setCategories] = useState(['All']);
   const [verifiedReviews, setVerifiedReviews] = useState([]);
   const [verifiedStats, setVerifiedStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -16,6 +18,25 @@ function VerifiedAnalysisPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    api.getCategories().then(cats => {
+      let arr = cats;
+      if (cats && typeof cats === 'object' && !Array.isArray(cats) && cats.categories) {
+        arr = cats.categories;
+      }
+      if (Array.isArray(arr) && arr.length > 0) {
+        setCategories(arr);
+      } else {
+        setCategories(['All']);
+        console.error('Categories API did not return a valid array:', cats);
+      }
+    }).catch(err => {
+      setCategories(['All']);
+      console.error('Error fetching categories:', err);
+    });
+  }, []);
 
   const runQuery = async (newPage = page) => {
     try {
@@ -27,6 +48,7 @@ function VerifiedAnalysisPage() {
       if (year) params.year = year;
       if (month) params.month = month;
       if (week) params.week = week;
+      if (category && category !== 'All') params.category = category;
       const [reviewsRes, stats] = await Promise.all([
         api.getVerifiedPurchaseReviews(params, newPage),
         api.getVerifiedStats(params)
@@ -52,7 +74,7 @@ function VerifiedAnalysisPage() {
     runQuery(newPage);
   };
   // Reset page to 1 when weeksBack changes
-  React.useEffect(() => {
+  useEffect(() => {
     setPage(1);
   }, [weeksBack]);
 
@@ -67,6 +89,15 @@ function VerifiedAnalysisPage() {
               Time Range (dynamic)
             </label>
             <div className="flex gap-2">
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+              >
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
               <select
                 className="border rounded-lg px-2 py-2"
                 value={year}

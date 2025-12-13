@@ -165,23 +165,42 @@ app.get("/api/bot-data", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 25, 100); // Default: 25 per page
     const skip = (page - 1) * limit;
     
-    const filter = {};
-    if (req.query.category && req.query.category !== 'All') {
-      filter.product_category = req.query.category;
+    // Time frame support
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+    const { year, month, week, category } = req.query;
+    const { startDate, endDate } = await getDateRange(await getDb().then(db => db.collection("reviews")), weeksBack, year, month, week);
+    const filter = {
+      review_date: { $gte: startDate, $lte: endDate }
+    };
+    if (category && category !== 'All') {
+      filter.product_category = category;
     }
 
     // Use compound index when filtering by category, date index otherwise
-    const sortKey = Object.keys(filter).length > 0 && filter.product_category
-      ? { product_category: 1, review_date: -1 }  // Use compound index when filtering by category
-      : { review_date: -1 };  // Use date index otherwise
-    
+    const sortKey = Object.keys(filter).length > 1 && filter.product_category
+      ? { product_category: 1, review_date: -1 }
+      : { review_date: -1 };
+
     const pipeline = [
       { $match: filter },
       { $sort: sortKey },
       { $limit: skip + limit },  // Limit early to reduce memory
       { $skip: skip },
       { $limit: limit },
-      { $project: { product_title: 1, product_category: 1, star_rating: 1, review_date: 1, verified_purchase: 1, review_id: 1, product_id: 1, helpful_votes: 1, total_votes: 1 } }
+      // Lookup review count for each customer_id
+      { $lookup: {
+         from: "reviews",
+         let: { cid: "$customer_id" },
+         pipeline: [
+           { $match: { $expr: { $eq: ["$customer_id", "$$cid"] } } },
+           { $count: "count" }
+         ],
+         as: "user_review_count"
+      }},
+      { $addFields: {
+         user_review_count: { $ifNull: [ { $arrayElemAt: [ "$user_review_count.count", 0 ] }, 1 ] }
+      }},
+      { $project: { product_title: 1, product_category: 1, star_rating: 1, review_date: 1, verified_purchase: 1, review_id: 1, product_id: 1, helpful_votes: 1, total_votes: 1, customer_id: 1, user_review_count: 1 } }
     ];
     
     // Fetch data only - no count operation (instant response)

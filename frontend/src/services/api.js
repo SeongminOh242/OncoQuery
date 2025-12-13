@@ -20,8 +20,15 @@ export const api = {
   },
 
   // Bot Detection (backend exposes /api/bot-data and /api/bot-stats)
-  getBotDetectionReviews: async (category = 'All', page = 1) => {
-    const params = new URLSearchParams({ category, page });
+  // Accepts paramsObj: { weeksBack, year, month, week, category }, page
+  getBotDetectionReviews: async (paramsObj = {}, page = 1) => {
+    const params = new URLSearchParams();
+    if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
+    if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+    if (paramsObj.year) params.append('year', paramsObj.year);
+    if (paramsObj.month) params.append('month', paramsObj.month);
+    if (paramsObj.week) params.append('week', paramsObj.week);
+    params.append('page', page.toString());
     const json = await safeFetchJson(`${API_BASE_URL}/bot-data?${params}`);
     return json.data || json;
   },
