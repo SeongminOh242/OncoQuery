@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown, Star, CheckCircle, AlertTriangle, Loader, MessageSquare, Play } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -13,7 +13,26 @@ function ReviewsPage() {
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
 
-  const categories = ['All', 'Electronics', 'Books', 'Clothing', 'Home & Kitchen', 'Sports'];
+  const [categories, setCategories] = useState(['All']);
+  // Fetch categories on mount
+  useEffect(() => {
+    api.getCategories().then(cats => {
+      let arr = cats;
+      if (cats && typeof cats === 'object' && !Array.isArray(cats) && cats.categories) {
+        arr = cats.categories;
+      }
+      console.log('Categories received from API:', arr);
+      if (Array.isArray(arr) && arr.length > 0) {
+        setCategories(arr);
+      } else {
+        setCategories(['All']);
+        console.error('Categories API did not return a valid array:', cats);
+      }
+    }).catch(err => {
+      setCategories(['All']);
+      console.error('Error fetching categories:', err);
+    });
+  }, []);
 
   const runQuery = async () => {
     try {
@@ -207,7 +226,7 @@ function ReviewCard({ review, showHelpfulStats, showControversialStats }) {
               <span className="ml-1 font-medium">{review.star_rating}</span>
             </span>
             <span>Category: {review.product_category}</span>
-            <span>Date: {new Date(review.review_date).toLocaleDateString()}</span>
+            <span>Date: {review.review_date ? new Date(review.review_date).toLocaleDateString() : 'N/A'}</span>
           </div>
         </div>
       </div>

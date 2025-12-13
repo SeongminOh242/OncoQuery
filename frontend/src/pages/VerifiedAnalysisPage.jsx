@@ -3,27 +3,41 @@ import { Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function VerifiedAnalysisPage() {
-  const [weeksBack, setWeeksBack] = useState(4);
+  const [weeksBack, setWeeksBack] = useState(1);
+  const [year, setYear] = useState('');
+  const [month, setMonth] = useState('');
+  const [week, setWeek] = useState('');
   const [verifiedReviews, setVerifiedReviews] = useState([]);
   const [verifiedStats, setVerifiedStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
 
-  const runQuery = async () => {
+  const runQuery = async (newPage = page) => {
     try {
       setLoading(true);
       setError(null);
       const startTime = performance.now();
-      const [reviews, stats] = await Promise.all([
-        api.getVerifiedPurchaseReviews(weeksBack),
-        api.getVerifiedStats(weeksBack)
+      // Build params for API
+      let params = { weeksBack };
+      if (year) params.year = year;
+      if (month) params.month = month;
+      if (week) params.week = week;
+      const [reviewsRes, stats] = await Promise.all([
+        api.getVerifiedPurchaseReviews(params, newPage),
+        api.getVerifiedStats(params)
       ]);
       const endTime = performance.now();
+      let reviews = Array.isArray(reviewsRes) ? reviewsRes : (reviewsRes.data || []);
       setQueryTime(((endTime - startTime) / 1000).toFixed(2));
-      setVerifiedReviews(Array.isArray(reviews) ? reviews : []);
+      setVerifiedReviews(reviews);
       setVerifiedStats(stats);
+      setTotalPages(reviewsRes.totalPages || 1);
+      setHasMore(reviewsRes.hasMore || false);
       setHasRun(true);
     } catch (err) {
       setError(err.message);
@@ -33,6 +47,15 @@ function VerifiedAnalysisPage() {
     }
   };
 
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    runQuery(newPage);
+  };
+  // Reset page to 1 when weeksBack changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [weeksBack]);
+
   return (
     <div className="space-y-6">
       {/* Query Controls */}
@@ -41,21 +64,53 @@ function VerifiedAnalysisPage() {
         <div className="flex gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time Range (from Aug 31, 2015 backwards)
+              Time Range (dynamic)
             </label>
-            <select
-              className="w-full border rounded-lg px-4 py-2"
-              value={weeksBack}
-              onChange={(e) => setWeeksBack(parseInt(e.target.value))}
-            >
-              <option value={1}>Last 1 Week</option>
-              <option value={2}>Last 2 Weeks</option>
-              <option value={4}>Last 4 Weeks</option>
-              <option value={8}>Last 8 Weeks</option>
-              <option value={12}>Last 12 Weeks</option>
-              <option value={26}>Last 26 Weeks (6 months)</option>
-              <option value={52}>Last 52 Weeks (1 year)</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={year}
+                onChange={e => setYear(e.target.value)}
+              >
+                <option value="">Year</option>
+                {Array.from({length: 10}, (_, i) => 2015 - i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={month}
+                onChange={e => setMonth(e.target.value)}
+              >
+                <option value="">Month</option>
+                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={week}
+                onChange={e => setWeek(e.target.value)}
+              >
+                <option value="">Week</option>
+                {Array.from({length: 5}, (_, i) => i + 1).map(w => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={weeksBack}
+                onChange={e => setWeeksBack(parseInt(e.target.value))}
+              >
+                <option value={1}>Last 1 Week</option>
+                <option value={2}>Last 2 Weeks</option>
+                <option value={4}>Last 4 Weeks</option>
+                <option value={8}>Last 8 Weeks</option>
+                <option value={12}>Last 12 Weeks</option>
+                <option value={26}>Last 26 Weeks (6 months)</option>
+                <option value={52}>Last 52 Weeks (1 year)</option>
+              </select>
+            </div>
           </div>
           <button
             onClick={runQuery}
@@ -120,6 +175,7 @@ function VerifiedAnalysisPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Verified</th>
               </tr>
             </thead>
@@ -130,6 +186,7 @@ function VerifiedAnalysisPage() {
                   <td className="px-4 py-3 text-sm text-gray-900">{review.product_title?.slice(0, 60)}...</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{review.product_category}</td>
                   <td className="px-4 py-3 text-sm">{review.star_rating}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{review.review_date ? new Date(review.review_date).toLocaleDateString() : 'N/A'}</td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       review.verified_purchase === 'Y' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -141,8 +198,26 @@ function VerifiedAnalysisPage() {
               ))}
             </tbody>
           </table>
+          </div>
+          {/* Pagination Controls */}
+          <div className="flex justify-center items-center gap-4 mt-6">
+            <button
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <span className="text-gray-600">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => handlePageChange(page + 1)}
+              disabled={!hasMore && page >= totalPages}
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
-      </div>
       )}
     </div>
   );

@@ -38,21 +38,39 @@ export const api = {
   },
 
   // Trending Products (backend: /api/trending-products)
-  getTrendingProducts: async (weeksBack = 4, page = 1) => {
-    const params = new URLSearchParams({ weeksBack: weeksBack.toString(), page: page.toString() });
+  getTrendingProducts: async (paramsObj = {}, page = 1) => {
+    const params = new URLSearchParams();
+    // Accepts paramsObj: { weeksBack, year, month, week, category }
+    if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+    if (paramsObj.year) params.append('year', paramsObj.year);
+    if (paramsObj.month) params.append('month', paramsObj.month);
+    if (paramsObj.week) params.append('week', paramsObj.week);
+    if (paramsObj.category) params.append('category', paramsObj.category);
+    params.append('page', page.toString());
     const json = await safeFetchJson(`${API_BASE_URL}/trending-products?${params}`);
     return json.data || json || [];
   },
 
   // Verified Purchase Analysis (backend: /api/verified-analysis and /api/verified-stats)
-  getVerifiedPurchaseReviews: async (weeksBack = 4, page = 1) => {
-    const params = new URLSearchParams({ weeksBack: weeksBack.toString(), page: page.toString() });
+
+  // Accepts paramsObj: { weeksBack, year, month, week }, page
+  getVerifiedPurchaseReviews: async (paramsObj = {}, page = 1) => {
+    const params = new URLSearchParams();
+    if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+    if (paramsObj.year) params.append('year', paramsObj.year);
+    if (paramsObj.month) params.append('month', paramsObj.month);
+    if (paramsObj.week) params.append('week', paramsObj.week);
+    params.append('page', page.toString());
     const json = await safeFetchJson(`${API_BASE_URL}/verified-analysis?${params}`);
     return json.data || json;
   },
 
-  getVerifiedStats: async (weeksBack = 4) => {
-    const params = new URLSearchParams({ weeksBack: weeksBack.toString() });
+  getVerifiedStats: async (paramsObj = {}) => {
+    const params = new URLSearchParams();
+    if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+    if (paramsObj.year) params.append('year', paramsObj.year);
+    if (paramsObj.month) params.append('month', paramsObj.month);
+    if (paramsObj.week) params.append('week', paramsObj.week);
     try {
       const json = await safeFetchJson(`${API_BASE_URL}/verified-stats?${params}`);
       return json;
@@ -73,12 +91,17 @@ export const api = {
   },
 
   // Helpful/Controversial Reviews (backend: /api/helpful-reviews and /api/controversial-reviews)
-  getHelpfulReviews: async (category = 'All', productId = null, page = 1) => {
+
+  // Accepts paramsObj: { category, weeksBack, year, month, week }, page
+  getHelpfulReviews: async (paramsObj = {}, page = 1) => {
     try {
-      const params = new URLSearchParams({ page: page.toString() });
-      if (category && category !== 'All') {
-        params.append('category', category);
-      }
+      const params = new URLSearchParams();
+      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
+      if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+      if (paramsObj.year) params.append('year', paramsObj.year);
+      if (paramsObj.month) params.append('month', paramsObj.month);
+      if (paramsObj.week) params.append('week', paramsObj.week);
+      params.append('page', page.toString());
       const json = await safeFetchJson(`${API_BASE_URL}/helpful-reviews?${params}`);
       return json.data || json || [];
     } catch (err) {
@@ -87,12 +110,15 @@ export const api = {
     }
   },
 
-  getControversialReviews: async (category = 'All', page = 1) => {
+  getControversialReviews: async (paramsObj = {}, page = 1) => {
     try {
-      const params = new URLSearchParams({ page: page.toString() });
-      if (category && category !== 'All') {
-        params.append('category', category);
-      }
+      const params = new URLSearchParams();
+      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
+      if (paramsObj.weeksBack !== undefined) params.append('weeksBack', paramsObj.weeksBack.toString());
+      if (paramsObj.year) params.append('year', paramsObj.year);
+      if (paramsObj.month) params.append('month', paramsObj.month);
+      if (paramsObj.week) params.append('week', paramsObj.week);
+      params.append('page', page.toString());
       const json = await safeFetchJson(`${API_BASE_URL}/controversial-reviews?${params}`);
       return json.data || json || [];
     } catch (err) {

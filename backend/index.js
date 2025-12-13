@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -11,6 +12,10 @@ const dbName = process.env.MONGO_DB_NAME || "localhost";
 let db;
 
 const app = express();
+
+// middleware
+app.use(cors());
+app.use(express.json());
 
 // Configuration
 const LIMITS = {
@@ -35,29 +40,65 @@ let datasetMaxDate = null;
 
 // Helper: Get date range going backwards from most recent review
 async function getDateRange(collection, weeksBack = 4) {
+  // Support dynamic year/month/week
+  const args = arguments;
+  let weeksBackArg = weeksBack;
+  let year, month, week;
+  if (args.length > 2) {
+    year = args[2];
+    month = args[3];
+    week = args[4];
+  }
+  const y = parseInt(year);
+  const m = month ? parseInt(month) - 1 : 0;
+  const w = week ? parseInt(week) : null;
+  const validYear = year && !isNaN(y) && y > 1900 && y < 2100;
+  const validMonth = month && !isNaN(parseInt(month)) && parseInt(month) >= 1 && parseInt(month) <= 12;
+  const validWeek = week && !isNaN(parseInt(week)) && parseInt(week) >= 1 && parseInt(week) <= 5;
+  if (validYear) {
+    let startDateObj, endDateObj;
+    if (validWeek) {
+      startDateObj = new Date(Date.UTC(y, m, 1));
+      startDateObj.setUTCDate(1 + (w - 1) * 7);
+      endDateObj = new Date(startDateObj);
+      endDateObj.setUTCDate(startDateObj.getUTCDate() + 6);
+    } else if (validMonth) {
+      startDateObj = new Date(Date.UTC(y, m, 1));
+      endDateObj = new Date(Date.UTC(y, m + 1, 0));
+    } else {
+      startDateObj = new Date(Date.UTC(y, 0, 1));
+      endDateObj = new Date(Date.UTC(y, 11, 31));
+    }
+    if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+      // Fallback to weeksBack if invalid
+      const endDate = '2015-08-31';
+      const endDateObj = new Date(endDate);
+      const startDateObj = new Date(endDateObj);
+      startDateObj.setDate(startDateObj.getDate() - (weeksBackArg * 7));
+      const startDate = startDateObj.toISOString().split('T')[0];
+      return { startDate, endDate };
+    }
+    const startDate = startDateObj.toISOString().split('T')[0];
+    const endDate = endDateObj.toISOString().split('T')[0];
+    return { startDate, endDate };
+  }
   // Use the known max date from the dataset
-  const endDate = '2015-08-31'; // Latest date in Amazon reviews dataset
+  const endDate = '2015-08-31';
   const endDateObj = new Date(endDate);
   const startDateObj = new Date(endDateObj);
-  startDateObj.setDate(startDateObj.getDate() - (weeksBack * 7));
-  
-  // Format as YYYY-MM-DD strings to match MongoDB string dates
+  startDateObj.setDate(startDateObj.getDate() - (weeksBackArg * 7));
   const startDate = startDateObj.toISOString().split('T')[0];
-  
-  return {
-    startDate,
-    endDate
-  };
+  return { startDate, endDate };
 }
 
-// middleware
-app.use(cors());
-app.use(express.json());
+
 
 // test route
 app.get("/", (req, res) => {
   res.send("Backend server is running 🚀");
 });
+
+
 
 // Lazy MongoDB connection (test-friendly)
 // NOTE: Index creation has been moved to scripts/setup-indexes-fast.js
@@ -74,6 +115,40 @@ async function getDb() {
   
   return db;
 }
+
+// Endpoint to get all distinct product categories
+app.get("/api/categories", async (req, res) => {
+  try {
+    const database = await getDb();
+    const collection = database.collection("reviews");
+    let categories = await collection.distinct("product_category");
+    
+    // Generalized filter: remove categories that look like dates, are too long, contain HTML, or are mostly non-alphabetic
+    categories = categories.filter(c => {
+      if (!c || c === "All") return false;
+      if (typeof c !== "string") return false;
+      // Remove if looks like a date (YYYY-MM-DD)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(c)) return false;
+      // Remove if contains HTML tags or entities
+      if (/<[^>]+>|&#\d+;|&[a-z]+;/.test(c)) return false;
+      // Remove if too long (e.g., > 40 chars)
+      if (c.length > 40) return false;
+      // Remove if less than 2 alphabetic characters
+      if ((c.match(/[a-zA-Z]/g) || []).length < 2) return false;
+      // Remove if more than 60% of chars are non-alphabetic
+      const alphaCount = (c.match(/[a-zA-Z]/g) || []).length;
+      if (alphaCount / c.length < 0.4) return false;
+      return true;
+    });
+    categories.sort();
+    console.log("Fetched categories from DB:", categories);
+    res.json({ categories: ["All", ...categories] });
+  } catch (err) {
+    console.error("Error in /api/categories:", err);
+    
+    res.status(500).json({ categories: ["All"], error: "Failed to fetch categories" });
+  }
+});
 
 // FEATURE 2: BOT REVIEW DETECTION SYSTEM
 // Flags suspicious reviews based on detection criteria
@@ -236,16 +311,19 @@ app.get("/api/trending-products", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 25, LIMITS.TRENDING_PRODUCTS); // Default: 25 per page
     const skip = (page - 1) * limit;
     
-    // Get date range (weeksBack from most recent review)
-    const weeksBack = parseInt(req.query.weeksBack) || 5; // Default: last 5 weeks
-    const { startDate, endDate } = await getDateRange(collection, weeksBack);
-    
+    // Dynamic time frame
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+    const { year, month, week, category } = req.query;
+    const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     const dateFilter = {
       review_date: {
         $gte: startDate,
         $lte: endDate 
-      } 
+      }
     };
+    if (category && category !== 'All') {
+      dateFilter.product_category = category;
+    }
     
     // Get total count first for random offset calculation
     const totalReviews = await collection.countDocuments(dateFilter);
@@ -270,7 +348,8 @@ app.get("/api/trending-products", async (req, res) => {
         product_title: { $first: "$product_title" },
         product_category: { $first: "$product_category" },
         review_count: { $sum: 1 },
-        avg_rating: { $avg: { $convert: { input: "$star_rating", to: "int", onError: 0 } } }
+        avg_rating: { $avg: { $convert: { input: "$star_rating", to: "int", onError: 0 } } },
+        review_dates: { $push: "$review_date" }
       }},
       
       // 5. SORT by review count (popularity indicator)
@@ -289,6 +368,7 @@ app.get("/api/trending-products", async (req, res) => {
         product_category: 1,
         review_count: 1,
         avg_rating: { $round: ["$avg_rating", 2] },
+        review_dates: 1,
         _id: 0
       }}
     ];
@@ -324,11 +404,14 @@ app.get("/api/stats/overview", async (req, res) => {
   try {
     const database = await getDb();
     const collection = database.collection("reviews");
-    
-    // Get date range (weeksBack from most recent review)
-    const weeksBack = parseInt(req.query.weeksBack) || 4;
-    const { startDate, endDate } = await getDateRange(collection, weeksBack);
-    
+    // Pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 5, 100);
+    const skip = (page - 1) * limit;
+    // Dynamic time frame
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 4;
+    const { year, month, week } = req.query;
+    const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     // Simple count of reviews in date range
     const dateFilter = {
       review_date: {
@@ -336,49 +419,46 @@ app.get("/api/stats/overview", async (req, res) => {
         $lte: endDate
       }
     };
-    
     // Get total count first for random offset calculation
     const totalReviews = await collection.countDocuments(dateFilter);
-    
     // Pseudo-random sampling: pick random offset within the range
     const sampleSize = 1000;
     const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
-    
     const activeUsersResult = await collection.aggregate([
       // 1. MATCH reviews in date range
       { $match: dateFilter },
-      
       // 2. SKIP to random offset
       { $skip: randomOffset },
-      
       // 3. LIMIT to sample size
       { $limit: sampleSize },
-      
       // 4. GROUP by customer_id to count reviews per user
       { $group: {
         _id: "$customer_id",
         reviewCount: { $sum: 1 }
       }},
-      
       // 5. MATCH only users with > 5 reviews
       { $match: {
         reviewCount: { $gt: 5 }
       }},
-      
-      // 6. COUNT how many users have > 5 reviews
-      { $count: "activeUsers" }
-    ], { 
+      // 6. Pagination for users with > 5 reviews
+      { $limit: skip + limit },
+      { $skip: skip },
+      { $limit: limit }
+    ], {
       allowDiskUse: true
     }).toArray();
-
-    const activeUsers = activeUsersResult[0]?.activeUsers || 0;
+    const activeUsers = activeUsersResult.length;
     const duration = Date.now() - startTime;
-    
+    const totalPages = Math.ceil(activeUsers / limit);
     res.json({
       totalReviews,
       activeUsers,
+      page,
+      limit,
       sampleSize,
       randomOffset,
+      totalPages,
+      hasMore: page < totalPages,
       dateRange: { startDate, endDate },
       weeksBack,
       message: `${totalReviews.toLocaleString()} reviews total, ${activeUsers.toLocaleString()} users with >5 reviews (pseudo-random sample of ${sampleSize.toLocaleString()} at offset ${randomOffset.toLocaleString()}, ${duration}ms)`
@@ -394,37 +474,39 @@ app.get("/api/stats/overview", async (req, res) => {
 app.get("/api/verified-analysis", async (req, res) => {
   const startTime = Date.now();
   try {
-      const database = await getDb();
-      const collection = database.collection("reviews");
-      
-      // Get date range (weeksBack from most recent review)
-      const weeksBack = parseInt(req.query.weeksBack) || 5;
-      const { startDate, endDate } = await getDateRange(collection, weeksBack);
-      
-      const dateFilter = {
-        review_date: {
-          $gte: startDate,
-          $lte: endDate
-        }
-      };
-      
-      // Get total count for random offset
-      const totalReviews = await collection.countDocuments(dateFilter);
-      
-      // Pseudo-random sampling: pick random offset within the range
-      const sampleSize = 1000;
-      const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
-    
+    const database = await getDb();
+    const collection = database.collection("reviews");
+    // Pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 5, 100);
+    const skip = (page - 1) * limit;
+    // Dynamic time frame
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+    const { year, month, week } = req.query;
+    const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
+    const dateFilter = {
+      review_date: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    };
+    // Get total count for random offset
+    const totalReviews = await collection.countDocuments(dateFilter);
+    // Pseudo-random sampling: pick random offset within the range
+    const sampleSize = 1000;
+    const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
     const [verifiedReviews, stats] = await Promise.all([
       // Get sample of verified reviews (filter AFTER sampling for consistency)
       collection.aggregate([
         { $match: dateFilter },
         { $skip: randomOffset },
         { $limit: sampleSize },
-        { $match: { verified_purchase: "Y" } }, // Filter verified after sampling
-        { $project: { product_title: 1, product_category: 1, star_rating: 1, review_date: 1, review_id: 1, product_id: 1 } }
+        { $match: { verified_purchase: "Y" } },
+        { $project: { product_title: 1, product_category: 1, star_rating: 1, review_date: 1, review_id: 1, product_id: 1 } },
+        { $limit: skip + limit },
+        { $skip: skip },
+        { $limit: limit }
       ]).toArray(),
-      
       // Count verified vs unverified using same sampling approach
       collection.aggregate([
         { $match: dateFilter },
@@ -436,19 +518,21 @@ app.get("/api/verified-analysis", async (req, res) => {
         }}
       ]).toArray()
     ]);
-    
     const verifiedCount = stats.find(s => s._id === 'Y')?.count || 0;
     const unverifiedCount = stats.find(s => s._id === 'N')?.count || 0;
     const totalCount = verifiedCount + unverifiedCount;
     const duration = Date.now() - startTime;
-    
+    const totalPages = Math.ceil(verifiedCount / limit);
     res.json({
       total: verifiedCount,
       returned: verifiedReviews.length,
-      limit: sampleSize,
+      page,
+      limit,
       totalReviews,
       sampleSize,
       randomOffset,
+      totalPages,
+      hasMore: page < totalPages,
       dateRange: { startDate, endDate },
       weeksBack,
       verificationRate: totalCount > 0 ? ((verifiedCount / totalCount) * 100).toFixed(1) + '%' : 'N/A',
@@ -468,35 +552,32 @@ app.get("/api/verified-stats", async (req, res) => {
   try {
     const database = await getDb();
     const collection = database.collection("reviews");
-    
-    // Get date range (weeksBack from most recent review)
-    const weeksBack = parseInt(req.query.weeksBack) || 5;
-    const { startDate, endDate } = await getDateRange(collection, weeksBack);
-    
+    // Pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 5, 100);
+    const skip = (page - 1) * limit;
+    // Dynamic time frame
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+    const { year, month, week } = req.query;
+    const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     const dateFilter = {
       review_date: {
         $gte: startDate,
         $lte: endDate 
       } 
     };
-    
     // Get total count for random offset
     const totalReviews = await collection.countDocuments(dateFilter);
-    
     // Pseudo-random sampling
     const sampleSize = 10000;
     const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
-    
     const pipeline = [
       // 1. MATCH date range
       { $match: dateFilter },
-      
       // 2. SKIP to random offset
       { $skip: randomOffset },
-      
       // 3. LIMIT to sample size
       { $limit: sampleSize },
-      
       // 4. GROUP by verified_purchase
       { $group: {
         _id: "$verified_purchase",
@@ -504,7 +585,6 @@ app.get("/api/verified-stats", async (req, res) => {
         avgRating: { $avg: { $convert: { input: "$star_rating", to: "int", onError: 0 } } },
         avgHelpful: { $avg: { $convert: { input: "$helpful_votes", to: "int", onError: 0 } } }
       }},
-      
       // 5. FORMAT output
       {
         $project: {
@@ -514,20 +594,27 @@ app.get("/api/verified-stats", async (req, res) => {
           avgHelpful: { $round: ["$avgHelpful", 2] },
           _id: 0
         }
-      }
+      },
+      // 6. Pagination for stats array (simulate pagination on grouped results)
+      { $limit: skip + limit },
+      { $skip: skip },
+      { $limit: limit }
     ];
-    
     const results = await collection.aggregate(pipeline, { 
       allowDiskUse: QUERY_CONFIG.allowDiskUse 
     }).toArray();
-    
     const duration = Date.now() - startTime;
-    
+    const totalStats = results.length > 0 ? results.reduce((acc, cur) => acc + (cur.count || 0), 0) : 0;
+    const totalPages = Math.ceil(totalStats / limit);
     res.json({
       comparisonStats: results,
+      page,
+      limit,
       totalReviews,
       sampleSize,
       randomOffset,
+      totalPages,
+      hasMore: page < totalPages,
       dateRange: { startDate, endDate },
       weeksBack,
       message: `Verified vs unverified from ${sampleSize.toLocaleString()} sample at offset ${randomOffset.toLocaleString()} (${totalReviews.toLocaleString()} total, ${duration}ms)`
@@ -549,9 +636,10 @@ app.get("/api/helpful-reviews", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 5, 100);
     const skip = (page - 1) * limit;
     
-    // Get date range (weeksBack from most recent review) - ALWAYS apply date filter like other endpoints
-    const weeksBack = parseInt(req.query.weeksBack) || 5; // Default: last 5 weeks (like bot-stats, verified-analysis)
-    const { startDate, endDate } = await getDateRange(collection, weeksBack);
+        // Dynamic time frame
+        const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+        const { year, month, week } = req.query;
+        const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     
     const dateFilter = {
       review_date: { $gte: startDate, $lte: endDate }
@@ -659,9 +747,10 @@ app.get("/api/controversial-reviews", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 5, 100);
     const skip = (page - 1) * limit;
     
-    // Get date range (weeksBack from most recent review) - ALWAYS apply date filter
-    const weeksBack = parseInt(req.query.weeksBack) || 5; // Default: last 5 weeks
-    const { startDate, endDate } = await getDateRange(collection, weeksBack);
+        // Dynamic time frame
+        const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+        const { year, month, week } = req.query;
+        const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     
     const dateFilter = {
       review_date: { $gte: startDate, $lte: endDate }
@@ -682,13 +771,10 @@ app.get("/api/controversial-reviews", async (req, res) => {
     const pipeline = [
       // 1. MATCH reviews in date range (and category if provided)
       { $match: dateFilter },
-      
       // 2. SKIP to random offset (pseudo-random sampling)
       { $skip: randomOffset },
-      
       // 3. LIMIT to sample size
       { $limit: sampleSize },
-      
       // 4. Convert vote fields to numbers
       { $addFields: {
         helpful_votes_num: { 
@@ -706,20 +792,22 @@ app.get("/api/controversial-reviews", async (req, res) => {
             onError: 0,
             onNull: 0
           } 
+        },
+        unhelpful_votes_num: {
+          $subtract: [
+            { $convert: { input: "$total_votes", to: "int", onError: 0, onNull: 0 } },
+            { $convert: { input: "$helpful_votes", to: "int", onError: 0, onNull: 0 } }
+          ]
         }
       }},
-      
       // 5. Filter by votes AFTER conversion
       { $match: { total_votes_num: { $gte: 10 } } },
-      
-      // 6. Sort using converted numeric fields (ascending helpful = controversial)
-      { $sort: { helpful_votes_num: 1, total_votes_num: -1 } },
-      
+      // 6. Sort by unhelpful votes descending (most controversial first), then by total_votes descending
+      { $sort: { unhelpful_votes_num: -1, total_votes_num: -1 } },
       // 7. Early limit for pagination
       { $limit: skip + limit },
       { $skip: skip },
       { $limit: limit },
-      
       // 8. Project final fields
       { $project: {
         product_title: 1, product_category: 1, star_rating: 1,
@@ -759,7 +847,7 @@ app.get("/api/controversial-reviews", async (req, res) => {
 });
 
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

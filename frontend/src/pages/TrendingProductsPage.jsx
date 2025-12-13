@@ -3,22 +3,45 @@ import { Star, Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function TrendingProductsPage() {
-  const [weeksBack, setWeeksBack] = useState(4);
+  const [weeksBack, setWeeksBack] = useState(1);
+  const [year, setYear] = useState('');
+  const [month, setMonth] = useState('');
+  const [week, setWeek] = useState('');
+  const [category, setCategory] = useState('All');
+  const [categories, setCategories] = useState(['All']);
   const [trendingProducts, setTrendingProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
 
-  const runQuery = async () => {
+  const runQuery = async (newPage = page) => {
     try {
       setLoading(true);
       setError(null);
       const startTime = performance.now();
-      const products = await api.getTrendingProducts(weeksBack);
+      // Build params for API
+      let params = { weeksBack };
+      if (year) params.year = year;
+      if (month) params.month = month;
+      if (week) params.week = week;
+      if (category && category !== 'All') params.category = category;
+      const res = await api.getTrendingProducts(params, newPage);
       const endTime = performance.now();
       setQueryTime(((endTime - startTime) / 1000).toFixed(2));
-      setTrendingProducts(Array.isArray(products) ? products : []);
+      // Support both array and object response
+      if (Array.isArray(res)) {
+        setTrendingProducts(res);
+        setTotalPages(1);
+        setHasMore(false);
+      } else {
+        setTrendingProducts(res.data || []);
+        setTotalPages(res.totalPages || 1);
+        setHasMore(res.hasMore || false);
+      }
       setHasRun(true);
     } catch (err) {
       setError(err.message);
@@ -27,6 +50,34 @@ function TrendingProductsPage() {
       setLoading(false);
     }
   };
+  // Fetch categories on mount
+  React.useEffect(() => {
+    api.getCategories().then(cats => {
+      let arr = cats;
+      if (cats && typeof cats === 'object' && !Array.isArray(cats) && cats.categories) {
+        arr = cats.categories;
+      }
+      console.log('Categories received from API:', arr);
+      if (Array.isArray(arr) && arr.length > 0) {
+        setCategories(arr);
+      } else {
+        setCategories(['All']);
+        console.error('Categories API did not return a valid array:', cats);
+      }
+    }).catch(err => {
+      setCategories(['All']);
+      console.error('Error fetching categories:', err);
+    });
+  }, []);
+
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    runQuery(newPage);
+  };
+  // Reset page to 1 when weeksBack changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [weeksBack]);
 
   if (loading) {
     return (
@@ -45,21 +96,62 @@ function TrendingProductsPage() {
         <div className="flex gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time Range (from most recent)
+              Time Range (dynamic)
             </label>
-            <select
-              className="w-full border rounded-lg px-4 py-2"
-              value={weeksBack}
-              onChange={(e) => setWeeksBack(parseInt(e.target.value))}
-            >
-              <option value={1}>Last 1 Week</option>
-              <option value={2}>Last 2 Weeks</option>
-              <option value={4}>Last 4 Weeks</option>
-              <option value={8}>Last 8 Weeks</option>
-              <option value={12}>Last 12 Weeks</option>
-              <option value={26}>Last 26 Weeks (6 months)</option>
-              <option value={52}>Last 52 Weeks (1 year)</option>
-            </select>
+            <div className="flex gap-2">
+                          <select
+                            className="border rounded-lg px-2 py-2"
+                            value={category}
+                            onChange={e => setCategory(e.target.value)}
+                          >
+                            {categories.map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={year}
+                onChange={e => setYear(e.target.value)}
+              >
+                <option value="">Year</option>
+                {Array.from({length: 10}, (_, i) => 2015 - i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={month}
+                onChange={e => setMonth(e.target.value)}
+              >
+                <option value="">Month</option>
+                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={week}
+                onChange={e => setWeek(e.target.value)}
+              >
+                <option value="">Week</option>
+                {Array.from({length: 5}, (_, i) => i + 1).map(w => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
+              <select
+                className="border rounded-lg px-2 py-2"
+                value={weeksBack}
+                onChange={e => setWeeksBack(parseInt(e.target.value))}
+              >
+                <option value={1}>Last 1 Week</option>
+                <option value={2}>Last 2 Weeks</option>
+                <option value={4}>Last 4 Weeks</option>
+                <option value={8}>Last 8 Weeks</option>
+                <option value={12}>Last 12 Weeks</option>
+                <option value={26}>Last 26 Weeks (6 months)</option>
+                <option value={52}>Last 52 Weeks (1 year)</option>
+              </select>
+            </div>
           </div>
           <button
             onClick={runQuery}
@@ -98,29 +190,55 @@ function TrendingProductsPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reviews</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Review Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trendingProducts.map((product, idx) => (
-                <tr key={product.product_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">#{idx + 1}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{product.product_title?.slice(0, 60)}...</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{product.product_category}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <div className="flex items-center">
-                      <Star className="w-4 h-4 text-yellow-400 fill-yellow-400 mr-1" />
-                      {product.avg_rating}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{product.review_count?.toLocaleString()}</td>
-                </tr>
-              ))}
+              {trendingProducts.map((product, idx) => {
+                // Show only the first review date for the product
+                let reviewDates = product.review_dates || [];
+                let reviewDate = reviewDates.length > 0 ? reviewDates[0] : null;
+                return (
+                  <tr key={product.product_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">#{idx + 1 + (page - 1) * trendingProducts.length}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{product.product_title?.slice(0, 60)}...</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{product.product_category}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center">
+                        <Star className="w-4 h-4 text-yellow-400 fill-yellow-400 mr-1" />
+                        {product.avg_rating}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{product.review_count?.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {reviewDate ? reviewDate : 'N/A'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           </div>
+          {/* Pagination Controls */}
+          <div className="flex justify-center items-center gap-4 mt-6">
+            <button
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <span className="text-gray-600">Page {page} of {totalPages}</span>
+            <button
+              onClick={() => handlePageChange(page + 1)}
+              disabled={!hasMore && page >= totalPages}
+              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
-      
       {hasRun && !loading && trendingProducts.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800">No trending products found for the selected time range.</p>
