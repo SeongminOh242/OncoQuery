@@ -39,15 +39,14 @@ function ReviewsPage() {
       setLoading(true);
       setError(null);
       const startTime = performance.now();
-      
+      const params = { category: selectedCategory, weeksBack };
       if (reviewsSubTab === 'helpful') {
-        const reviewData = await api.getHelpfulReviews(selectedCategory, null, currentPage, weeksBack);
+        const reviewData = await api.getHelpfulReviews(params, currentPage);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
       } else {
-        const reviewData = await api.getControversialReviews(selectedCategory, currentPage, weeksBack);
+        const reviewData = await api.getControversialReviews(params, currentPage);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
       }
-      
       const endTime = performance.now();
       setQueryTime(((endTime - startTime) / 1000).toFixed(2));
       setHasRun(true);
