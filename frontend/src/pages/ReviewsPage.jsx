@@ -6,14 +6,20 @@ function ReviewsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [reviewsSubTab, setReviewsSubTab] = useState('helpful');
   const [currentPage, setCurrentPage] = useState(1);
-  const [weeksBack, setWeeksBack] = useState(null); // null = all data, or set to a number for specific weeks
+  const [weeksBack] = useState(1); // Always 1 week
+  const [year, setYear] = useState('');
+  const [month, setMonth] = useState('');
+  const [week, setWeek] = useState('');
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
-
   const [categories, setCategories] = useState(['All']);
+  const [meta, setMeta] = useState(null);
+  const [yearOptions, setYearOptions] = useState([]);
+  const [monthOptions, setMonthOptions] = useState([]);
+  const [weekOptions, setWeekOptions] = useState([]);
   // Fetch categories on mount
   useEffect(() => {
     api.getCategories().then(cats => {
@@ -21,7 +27,6 @@ function ReviewsPage() {
       if (cats && typeof cats === 'object' && !Array.isArray(cats) && cats.categories) {
         arr = cats.categories;
       }
-      console.log('Categories received from API:', arr);
       if (Array.isArray(arr) && arr.length > 0) {
         setCategories(arr);
       } else {
@@ -32,6 +37,20 @@ function ReviewsPage() {
       setCategories(['All']);
       console.error('Error fetching categories:', err);
     });
+    // Fetch meta for date range
+    api.getOverviewMeta().then(meta => {
+      setMeta(meta);
+      // Build year options
+      if (meta && meta.earliestDate && meta.latestDate) {
+        const startYear = parseInt(meta.earliestDate.slice(0, 4));
+        const endYear = parseInt(meta.latestDate.slice(0, 4));
+        const years = [];
+        for (let y = endYear; y >= startYear; y--) years.push(y);
+        setYearOptions(years);
+        setMonthOptions([1,2,3,4,5,6,7,8,9,10,11,12]);
+        setWeekOptions([1, 2, 3, 4]);
+      }
+    });
   }, []);
 
   const runQuery = async () => {
@@ -39,7 +58,13 @@ function ReviewsPage() {
       setLoading(true);
       setError(null);
       const startTime = performance.now();
-      const params = { category: selectedCategory, weeksBack };
+      const params = {
+        category: selectedCategory,
+        weeksBack,
+        year: year || undefined,
+        month: month || undefined,
+        week: week || undefined
+      };
       if (reviewsSubTab === 'helpful') {
         const reviewData = await api.getHelpfulReviews(params, currentPage);
         setReviews(Array.isArray(reviewData) ? reviewData : []);
@@ -63,77 +88,92 @@ function ReviewsPage() {
       {/* Query Controls */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-semibold mb-4">Query Settings</h3>
-        <div className="space-y-4">
-          <div className="flex gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Review Type
-              </label>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setReviewsSubTab('helpful')}
-                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    reviewsSubTab === 'helpful'
-                      ? 'bg-green-100 text-green-700 border-2 border-green-300'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <ThumbsUp className="w-4 h-4 inline mr-2" />
-                  Most Helpful
-                </button>
-                <button
-                  onClick={() => setReviewsSubTab('controversial')}
-                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-                    reviewsSubTab === 'controversial'
-                      ? 'bg-orange-100 text-orange-700 border-2 border-orange-300'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <ThumbsDown className="w-4 h-4 inline mr-2" />
-                  Most Controversial
-                </button>
-              </div>
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Time Range (from Aug 31, 2015 backwards)
-              </label>
-              <select
-                className="w-full border rounded-lg px-4 py-2"
-                value={weeksBack || ''}
-                onChange={(e) => setWeeksBack(e.target.value === '' ? null : parseInt(e.target.value))}
-              >
-                <option value="">All Time</option>
-                <option value={1}>Last 1 Week</option>
-                <option value={2}>Last 2 Weeks</option>
-                <option value={4}>Last 4 Weeks</option>
-                <option value={8}>Last 8 Weeks</option>
-                <option value={12}>Last 12 Weeks</option>
-                <option value={26}>Last 26 Weeks (6 months)</option>
-                <option value={52}>Last 52 Weeks (1 year)</option>
-              </select>
-            </div>
-            <div className="w-48">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Category Filter
-              </label>
-              <select
-                className="w-full border rounded-lg px-4 py-2"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-              >
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
-            </div>
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Review Type:</span>
             <button
-              onClick={runQuery}
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
+              onClick={() => setReviewsSubTab('helpful')}
+              className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                reviewsSubTab === 'helpful'
+                  ? 'bg-green-100 text-green-700 border-2 border-green-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
             >
-              <Play className="w-4 h-4" />
-              Run Query
+              <ThumbsUp className="w-4 h-4 inline mr-1" />
+              Helpful
+            </button>
+            <button
+              onClick={() => setReviewsSubTab('controversial')}
+              className={`px-3 py-1 rounded-lg font-medium transition-colors ${
+                reviewsSubTab === 'controversial'
+                  ? 'bg-orange-100 text-orange-700 border-2 border-orange-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <ThumbsDown className="w-4 h-4 inline mr-1" />
+              Controversial
             </button>
           </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Category:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+            >
+              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Year:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+              disabled={!yearOptions.length}
+            >
+              <option value="">All</option>
+              {yearOptions.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Month:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+              disabled={!monthOptions.length}
+            >
+              <option value="">All</option>
+              {monthOptions.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-sm font-medium text-gray-700">Week:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={week}
+              onChange={e => setWeek(e.target.value)}
+              disabled={!weekOptions.length}
+            >
+              <option value="">All</option>
+              {weekOptions.map(w => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={runQuery}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
+          >
+            <Play className="w-4 h-4" />
+            Run Query
+          </button>
         </div>
       </div>
 

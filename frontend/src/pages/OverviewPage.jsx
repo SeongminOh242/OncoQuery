@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import StatCard from '../components/StatCard';
-import { Star, Percent, Activity, CheckCircle, Loader, Play } from 'lucide-react';
+import { BarChart3, Calendar, List, CheckCircle, Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function OverviewPage() {
   const [weeksBack, setWeeksBack] = useState(4);
   const [overviewStats, setOverviewStats] = useState(null);
+  const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
+  // Fetch meta on mount
+  React.useEffect(() => {
+    api.getOverviewMeta().then(setMeta).catch(() => setMeta(null));
+  }, []);
 
   const runQuery = async () => {
     try {
@@ -31,38 +36,44 @@ function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      {/* Query Controls */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-xl font-semibold mb-4">Query Settings</h3>
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time Range (from Aug 31, 2015 backwards)
-            </label>
-            <select
-              className="w-full border rounded-lg px-4 py-2"
-              value={weeksBack}
-              onChange={(e) => setWeeksBack(parseInt(e.target.value))}
-            >
-              <option value={1}>Last 1 Week</option>
-              <option value={2}>Last 2 Weeks</option>
-              <option value={4}>Last 4 Weeks</option>
-              <option value={8}>Last 8 Weeks</option>
-              <option value={12}>Last 12 Weeks</option>
-              <option value={26}>Last 26 Weeks (6 months)</option>
-              <option value={52}>Last 52 Weeks (1 year)</option>
-            </select>
+      {/* Big Metadata Section - always visible */}
+      {meta && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-lg shadow p-8">
+              <div className="text-center">
+                <BarChart3 className="w-16 h-16 mx-auto text-blue-500 mb-4" />
+                <h2 className="text-4xl font-bold text-gray-900 mb-2">
+                  {meta.size?.toLocaleString() || '0'}
+                </h2>
+                <p className="text-lg text-gray-600">Database Size (Reviews)</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-8">
+              <div className="text-center">
+                <Calendar className="w-16 h-16 mx-auto text-yellow-500 mb-4" />
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {meta.earliestDate || 'N/A'} - {meta.latestDate || 'N/A'}
+                </h2>
+                <p className="text-lg text-gray-600">Database Date Range</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-8">
+              <div className="text-center">
+                <List className="w-16 h-16 mx-auto text-purple-500 mb-4" />
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {meta.categories?.length || 0}
+                </h2>
+                <p className="text-lg text-gray-600">Categories</p>
+                <div className="mt-2 text-xs text-gray-500 max-h-24 overflow-y-auto">
+                  {meta.categories?.join(', ')}
+                </div>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={runQuery}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
-          >
-            <Play className="w-4 h-4" />
-            Run Query
-          </button>
         </div>
-      </div>
+      )}
+
 
       {loading && (
         <div className="flex items-center justify-center h-32">
@@ -84,7 +95,6 @@ function OverviewPage() {
           <p className="text-red-800">Error: {error}</p>
         </div>
       )}
-
       {hasRun && !loading && overviewStats && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -95,7 +105,7 @@ function OverviewPage() {
                   {overviewStats.totalReviews?.toLocaleString() || '0'}
                 </h2>
                 <p className="text-lg text-gray-600">
-                  Total Reviews
+                  Total Reviews (Filtered)
                 </p>
               </div>
             </div>

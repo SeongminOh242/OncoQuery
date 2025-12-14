@@ -1,4 +1,5 @@
 
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -141,7 +142,7 @@ app.get("/api/categories", async (req, res) => {
       return true;
     });
     categories.sort();
-    console.log("Fetched categories from DB:", categories);
+    // console.log("Fetched categories from DB:", categories);
     res.json({ categories: ["All", ...categories] });
   } catch (err) {
     console.error("Error in /api/categories:", err);
@@ -166,7 +167,7 @@ app.get("/api/bot-data", async (req, res) => {
     const skip = (page - 1) * limit;
     
     // Time frame support
-    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+  const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 1;
     const { year, month, week, category } = req.query;
     const { startDate, endDate } = await getDateRange(await getDb().then(db => db.collection("reviews")), weeksBack, year, month, week);
     const filter = {
@@ -246,7 +247,7 @@ app.get("/api/bot-stats", async (req, res) => {
     const collection = database.collection("reviews");
     
     // Get date range (weeksBack from most recent review)
-    const weeksBack = parseInt(req.query.weeksBack) || 5; // Default: last 5 weeks
+  const weeksBack = parseInt(req.query.weeksBack) || 1; // Default: last 1 week
     const { startDate, endDate } = await getDateRange(collection, weeksBack);
     
     const dateFilter = { 
@@ -331,7 +332,7 @@ app.get("/api/trending-products", async (req, res) => {
     const skip = (page - 1) * limit;
     
     // Dynamic time frame
-    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+  const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 1;
     const { year, month, week, category } = req.query;
     const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     const dateFilter = {
@@ -418,73 +419,62 @@ app.get("/api/trending-products", async (req, res) => {
 
 // FEATURE 1: OVERVIEW STATISTICS
 // OPTIMIZED: Ensure review_date index is used - match, sort, then aggregate
-app.get("/api/stats/overview", async (req, res) => {
-  const startTime = Date.now();
+
+// Overview meta endpoint: database size, date range, categories
+app.get("/api/overview-meta", async (req, res) => {
   try {
     const database = await getDb();
     const collection = database.collection("reviews");
-    // Pagination support
-    const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 5, 100);
-    const skip = (page - 1) * limit;
-    // Dynamic time frame
-    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 4;
-    const { year, month, week } = req.query;
-    const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
-    // Simple count of reviews in date range
-    const dateFilter = {
-      review_date: {
-        $gte: startDate,
-        $lte: endDate
+    const [size, earliestDocs, latestDocs, categories] = await Promise.all([
+      collection.estimatedDocumentCount(),
+      collection.find({ review_date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } }).sort({ review_date: 1 }).limit(10).toArray(),
+      collection.find({ review_date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } }).sort({ review_date: -1 }).limit(10).toArray(),
+      collection.distinct("product_category")
+    ]);
+    // Debug: log earliestDocs
+//     console.log('DEBUG overview-meta: earliestDocs =', Array.isArray(earliestDocs) ? earliestDocs : 'not an array');
+    // Only consider review_date values that are valid YYYY-MM-DD
+    let earliestDate = null;
+    if (Array.isArray(earliestDocs)) {
+      const validDates = earliestDocs
+        .map(doc => (doc && typeof doc.review_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(doc.review_date)) ? doc.review_date : null)
+        .filter(Boolean)
+        .sort();
+      if (validDates.length > 0) {
+        earliestDate = validDates[0];
       }
-    };
-    // Get total count first for random offset calculation
-    const totalReviews = await collection.countDocuments(dateFilter);
-    // Pseudo-random sampling: pick random offset within the range
-    const sampleSize = 1000;
-    const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
-    const activeUsersResult = await collection.aggregate([
-      // 1. MATCH reviews in date range
-      { $match: dateFilter },
-      // 2. SKIP to random offset
-      { $skip: randomOffset },
-      // 3. LIMIT to sample size
-      { $limit: sampleSize },
-      // 4. GROUP by customer_id to count reviews per user
-      { $group: {
-        _id: "$customer_id",
-        reviewCount: { $sum: 1 }
-      }},
-      // 5. MATCH only users with > 5 reviews
-      { $match: {
-        reviewCount: { $gt: 5 }
-      }},
-      // 6. Pagination for users with > 5 reviews
-      { $limit: skip + limit },
-      { $skip: skip },
-      { $limit: limit }
-    ], {
-      allowDiskUse: true
-    }).toArray();
-    const activeUsers = activeUsersResult.length;
-    const duration = Date.now() - startTime;
-    const totalPages = Math.ceil(activeUsers / limit);
+    }
+    let latestDate = null;
+    if (Array.isArray(latestDocs)) {
+      const validDates = latestDocs
+        .map(doc => (doc && typeof doc.review_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(doc.review_date)) ? doc.review_date : null)
+        .filter(Boolean)
+        .sort();
+      if (validDates.length > 0) {
+        latestDate = validDates[validDates.length - 1];
+      }
+    }
+//     console.log('DEBUG overview-meta: computed earliestDate =', earliestDate, 'latestDate =', latestDate);
+    const filteredCategories = (categories || []).filter(c => {
+      if (!c || c === "All") return false;
+      if (typeof c !== "string") return false;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(c)) return false;
+      if (/<[^>]+>|&#\d+;|&[a-z]+;/.test(c)) return false;
+      if (c.length > 40) return false;
+      if ((c.match(/[a-zA-Z]/g) || []).length < 2) return false;
+      const alphaCount = (c.match(/[a-zA-Z]/g) || []).length;
+      if (alphaCount / c.length < 0.4) return false;
+      return true;
+    });
     res.json({
-      totalReviews,
-      activeUsers,
-      page,
-      limit,
-      sampleSize,
-      randomOffset,
-      totalPages,
-      hasMore: page < totalPages,
-      dateRange: { startDate, endDate },
-      weeksBack,
-      message: `${totalReviews.toLocaleString()} reviews total, ${activeUsers.toLocaleString()} users with >5 reviews (pseudo-random sample of ${sampleSize.toLocaleString()} at offset ${randomOffset.toLocaleString()}, ${duration}ms)`
+      size,
+      earliestDate,
+      latestDate,
+      categories: ["All", ...filteredCategories.sort()]
     });
   } catch (err) {
-    console.error('Error in /api/stats/overview:', err);
-    res.status(500).json({ error: "Failed to fetch overview stats" });
+    console.error("Error in /api/overview-meta:", err);
+    res.status(500).json({ error: "Failed to fetch overview meta" });
   }
 });
 
@@ -500,8 +490,8 @@ app.get("/api/verified-analysis", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 5, 100);
     const skip = (page - 1) * limit;
     // Dynamic time frame
-    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
-    const { year, month, week } = req.query;
+  const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 1;
+    const { year, month, week, category } = req.query;
     const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     const dateFilter = {
       review_date: {
@@ -509,6 +499,10 @@ app.get("/api/verified-analysis", async (req, res) => {
         $lte: endDate
       }
     };
+    // Add category filter if provided and not 'All'
+    if (category && category !== 'All') {
+      dateFilter.product_category = category;
+    }
     // Get total count for random offset
     const totalReviews = await collection.countDocuments(dateFilter);
     // Pseudo-random sampling: pick random offset within the range
@@ -576,8 +570,8 @@ app.get("/api/verified-stats", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 5, 100);
     const skip = (page - 1) * limit;
     // Dynamic time frame
-    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
-    const { year, month, week } = req.query;
+  const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 1;
+    const { year, month, week, category } = req.query;
     const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     const dateFilter = {
       review_date: {
@@ -585,13 +579,17 @@ app.get("/api/verified-stats", async (req, res) => {
         $lte: endDate 
       } 
     };
+    // Add category filter if provided and not 'All'
+    if (category && category !== 'All') {
+      dateFilter.product_category = category;
+    }
     // Get total count for random offset
     const totalReviews = await collection.countDocuments(dateFilter);
     // Pseudo-random sampling
     const sampleSize = 10000;
     const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
     const pipeline = [
-      // 1. MATCH date range
+      // 1. MATCH date range and category
       { $match: dateFilter },
       // 2. SKIP to random offset
       { $skip: randomOffset },
@@ -656,7 +654,7 @@ app.get("/api/helpful-reviews", async (req, res) => {
     const skip = (page - 1) * limit;
     
         // Dynamic time frame
-        const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 5;
+    const weeksBack = req.query.weeksBack ? parseInt(req.query.weeksBack) : 1;
         const { year, month, week } = req.query;
         const { startDate, endDate } = await getDateRange(collection, weeksBack, year, month, week);
     
@@ -834,7 +832,15 @@ app.get("/api/controversial-reviews", async (req, res) => {
         review_id: 1, product_id: 1, 
         helpful_votes: 1,  // Keep original
         total_votes: 1,    // Keep original
-        customer_id: 1
+        customer_id: 1,
+        unhelpful_votes: "$unhelpful_votes_num",
+        controversy_score: {
+          $cond: [
+            { $gt: ["$total_votes_num", 0] },
+            { $round: [{ $multiply: [{ $divide: ["$unhelpful_votes_num", "$total_votes_num"] }, 100] }, 1] },
+            0
+          ]
+        }
       }}
     ];
     

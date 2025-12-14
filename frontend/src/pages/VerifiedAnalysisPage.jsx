@@ -1,9 +1,33 @@
+function Pagination({ currentPage, onPageChange, onRunQuery }) {
+  const handlePageChange = async (newPage) => {
+    onPageChange(newPage);
+    setTimeout(() => onRunQuery(), 0);
+  };
+  return (
+    <div className="flex justify-center items-center gap-4 mt-6">
+      <button
+        onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+        disabled={currentPage === 1}
+        className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+      >
+        Previous
+      </button>
+      <span className="text-gray-600">Page {currentPage}</span>
+      <button
+        onClick={() => handlePageChange(currentPage + 1)}
+        className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+      >
+        Next
+      </button>
+    </div>
+  );
+}
 import React, { useState, useEffect } from 'react';
 import { Loader, Play } from 'lucide-react';
 import { api } from '../services/api';
 
 function VerifiedAnalysisPage() {
-  const [weeksBack, setWeeksBack] = useState(1);
+  const [weeksBack] = useState(1); // Always 1 week
   const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [week, setWeek] = useState('');
@@ -18,8 +42,12 @@ function VerifiedAnalysisPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [meta, setMeta] = useState(null);
+  const [yearOptions, setYearOptions] = useState([]);
+  const [monthOptions, setMonthOptions] = useState([]);
+  const [weekOptions, setWeekOptions] = useState([]);
 
-  // Fetch categories on mount
+  // Fetch categories and meta on mount
   useEffect(() => {
     api.getCategories().then(cats => {
       let arr = cats;
@@ -36,6 +64,19 @@ function VerifiedAnalysisPage() {
       setCategories(['All']);
       console.error('Error fetching categories:', err);
     });
+    // Fetch meta for date range
+    api.getOverviewMeta().then(meta => {
+      setMeta(meta);
+      if (meta && meta.earliestDate && meta.latestDate) {
+        const startYear = parseInt(meta.earliestDate.slice(0, 4));
+        const endYear = parseInt(meta.latestDate.slice(0, 4));
+        const years = [];
+        for (let y = endYear; y >= startYear; y--) years.push(y);
+        setYearOptions(years);
+        setMonthOptions([1,2,3,4,5,6,7,8,9,10,11,12]);
+        setWeekOptions([1, 2, 3, 4]);
+      }
+    });
   }, []);
 
   const runQuery = async (newPage = page) => {
@@ -49,6 +90,7 @@ function VerifiedAnalysisPage() {
       if (month) params.month = month;
       if (week) params.week = week;
       if (category && category !== 'All') params.category = category;
+      params.limit = 25;
       const [reviewsRes, stats] = await Promise.all([
         api.getVerifiedPurchaseReviews(params, newPage),
         api.getVerifiedStats(params)
@@ -83,74 +125,65 @@ function VerifiedAnalysisPage() {
       {/* Query Controls */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-semibold mb-4">Query Settings</h3>
-        <div className="flex gap-4 items-end">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time Range (dynamic)
-            </label>
-            <div className="flex gap-2">
-              <select
-                className="border rounded-lg px-2 py-2"
-                value={category}
-                onChange={e => setCategory(e.target.value)}
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-              <select
-                className="border rounded-lg px-2 py-2"
-                value={year}
-                onChange={e => setYear(e.target.value)}
-              >
-                <option value="">Year</option>
-                {Array.from({length: 10}, (_, i) => 2015 - i).map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-              <select
-                className="border rounded-lg px-2 py-2"
-                value={month}
-                onChange={e => setMonth(e.target.value)}
-              >
-                <option value="">Month</option>
-                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-              <select
-                className="border rounded-lg px-2 py-2"
-                value={week}
-                onChange={e => setWeek(e.target.value)}
-              >
-                <option value="">Week</option>
-                {Array.from({length: 5}, (_, i) => i + 1).map(w => (
-                  <option key={w} value={w}>{w}</option>
-                ))}
-              </select>
-              <select
-                className="border rounded-lg px-2 py-2"
-                value={weeksBack}
-                onChange={e => setWeeksBack(parseInt(e.target.value))}
-              >
-                <option value={1}>Last 1 Week</option>
-                <option value={2}>Last 2 Weeks</option>
-                <option value={4}>Last 4 Weeks</option>
-                <option value={8}>Last 8 Weeks</option>
-                <option value={12}>Last 12 Weeks</option>
-                <option value={26}>Last 26 Weeks (6 months)</option>
-                <option value={52}>Last 52 Weeks (1 year)</option>
-              </select>
-            </div>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-4 items-center">
+            <span className="text-sm font-medium text-gray-700">Category:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+            >
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
           </div>
-          <button
-            onClick={runQuery}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
-          >
-            <Play className="w-4 h-4" />
-            Run Query
-          </button>
+          <div className="flex gap-4 items-center">
+            <span className="text-sm font-medium text-gray-700">Year:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+              disabled={!yearOptions.length}
+            >
+              <option value="">Year</option>
+              {yearOptions.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <span className="text-sm font-medium text-gray-700">Month:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+              disabled={!monthOptions.length}
+            >
+              <option value="">Month</option>
+              {monthOptions.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <span className="text-sm font-medium text-gray-700">Week:</span>
+            <select
+              className="border rounded-lg px-2 py-1"
+              value={week}
+              onChange={e => setWeek(e.target.value)}
+              disabled={!weekOptions.length}
+            >
+              <option value="">Week</option>
+              {weekOptions.map(w => (
+                <option key={w} value={w}>{w}</option>
+              ))}
+            </select>
+            <button
+              onClick={runQuery}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg flex items-center gap-2 disabled:bg-gray-400"
+            >
+              <Play className="w-4 h-4" />
+              Run Query
+            </button>
+          </div>
         </div>
       </div>
 
@@ -230,24 +263,7 @@ function VerifiedAnalysisPage() {
             </tbody>
           </table>
           </div>
-          {/* Pagination Controls */}
-          <div className="flex justify-center items-center gap-4 mt-6">
-            <button
-              onClick={() => handlePageChange(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="px-4 py-2 border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Previous
-            </button>
-            <span className="text-gray-600">Page {page} of {totalPages}</span>
-            <button
-              onClick={() => handlePageChange(page + 1)}
-              disabled={!hasMore && page >= totalPages}
-              className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-            >
-              Next
-            </button>
-          </div>
+          <Pagination currentPage={page} onPageChange={setPage} onRunQuery={runQuery} />
         </div>
       )}
     </div>
