@@ -1,104 +1,127 @@
-# OncoQuery
+# OncoQuery: Amazon Review Analytics Dashboard
 
-Amazon review analytics dashboard focused on detecting suspicious (bot/fake) reviews, showing trending products, and comparing verified vs non‑verified purchase ratings. Current implementation uses a React + Vite + Tailwind frontend and an Express backend serving mock JSON data. A database layer will replace mocks as the project evolves.
+A full-stack analytics dashboard for Amazon reviews, focused on detecting suspicious (bot/fake) reviews, trending products, and verified vs non-verified purchase analysis. Built with React (Vite + Tailwind) frontend, Node.js/Express backend, and MongoDB for data storage.
 
-## Tech Stack
-Frontend: React 19, Vite, Tailwind CSS, Recharts (charts), Lucide React (icons)
-Backend: Node.js (Express 4), CORS, dotenv
-Build/Dev: ES Modules, nodemon (dev backend)
+---
 
-## Directory Structure (Key Parts)
+## 🚀 Quick Start (Local Setup)
+
+### 1. Clone the Repository
+```bash
+# Clone and enter the project directory
+ git clone <your-repo-url>
+ cd OncoQuery
+```
+
+### 2. Set Up the Backend
+```bash
+cd backend
+cp .env.example .env   # Or create .env manually (see below)
+npm install
+npm run dev            # or: node index.js
+```
+- Ensure MongoDB is running locally (default: mongodb://localhost:27017)
+- Example .env:
+  ```
+  MONGO_URI=mongodb://localhost:27017
+  MONGO_DB_NAME=oncoquery
+  PORT=5000
+  ```
+
+### 3. Set Up the Frontend
+```bash
+cd ../frontend
+npm install
+npm run dev
+```
+- Open http://localhost:5173 in your browser
+
+### 4. (Optional) Ingest Data from TSV Files
+```bash
+cd ../tsv_converter
+python -m pip install -r requirements.txt
+python ingest_tsv_to_mongo.py --dir data --db oncoquery --collection reviews
+```
+- See tsv_converter/README.md for advanced options (batch size, upsert, dry-run, etc.)
+
+---
+
+## 🗂️ Project Structure
 ```
 OncoQuery/
-	frontend/
-		src/
-			App.jsx                Root layout & tab navigation
-			pages/                 Page components (Overview, Bot Detection, Trending Products, Verified Analysis)
-			components/            Reusable UI (StatCard, constants.js)
-			assets/mockData.js     Local mock datasets (to be removed after API integration)
-		tailwind.config.js       Tailwind config
-		vite.config.js           Vite build config
-	backend/
-		index.js                 Express server + mock API routes
-		mockData.js              Backend source of mock datasets
-		package.json             Backend service dependencies
-	react-front-end/           Legacy scaffold (to retire)
-	README.md                  Project overview (this file)
+├── backend/         # Express API server, MongoDB queries, scripts
+├── frontend/        # React + Vite + Tailwind dashboard
+├── tsv_converter/   # Python scripts for TSV → MongoDB ingestion
+├── IMPLEMENTATION_GUIDE.md
+├── QUICK_START.md
+├── README.md        # (this file)
 ```
 
-## Backend Mock API Endpoints
-| Method | Endpoint                | Returns                |
-| ------ | ----------------------- | ---------------------- |
-| GET    | `/api/bot-data`         | Category bot % list    |
-| GET    | `/api/trending-products`| Trending products      |
-| GET    | `/api/verified-analysis`| Verified vs non‑verified stats |
+---
 
-## Setup & Run
-### Frontend
-```cmd
-cd frontend
-npm install
-npm run dev
-```
-Dev server defaults to `http://localhost:5173` (Vite standard) unless configured otherwise.
+## 🛠️ Features
+- Category, year, month, week filtering (dynamic dropdowns)
+- Pagination for all analytics tabs
+- Bot/fake review detection & user stats
+- Trending products by time window
+- Verified vs non-verified purchase analysis
+- Helpful & controversial reviews
+- Overview dashboard with database-wide stats
+- Responsive, modern UI (Tailwind)
+- Robust error handling & loading states
 
-### Backend
-```cmd
-cd backend
-npm install
-npm run dev
-```
-Runs on `http://localhost:5000` (or `PORT` from `.env`).
+---
 
-### Backend API Testing
-To run backend API tests (using `__tests__/api.test.js`):
+## 🔌 API Endpoints (Key)
+| Method | Endpoint                | Description                       |
+|--------|------------------------|-----------------------------------|
+| GET    | /api/categories        | List all product categories       |
+| GET    | /api/bot-data          | Suspicious reviews (paginated)    |
+| GET    | /api/bot-stats         | Bot user statistics               |
+| GET    | /api/trending-products | Trending products (paginated)     |
+| GET    | /api/verified-analysis | Verified purchase reviews         |
+| GET    | /api/verified-stats    | Verified stats summary            |
+| GET    | /api/helpful-reviews   | Most helpful reviews              |
+| GET    | /api/controversial-reviews | Most controversial reviews   |
+| GET    | /api/overview-meta     | Database-wide metadata            |
 
-1. Ensure your `.env` file in `backend/` contains the following variables:
-	```
-	MONGO_URI=mongodb://localhost:27017
-	MONGO_DB_NAME=oncoquery
-	```
-	(Adjust values for your MongoDB setup as needed.)
+---
 
-2. Run tests from the `backend` directory:
-	```cmd
-	set NODE_ENV=test && npm test
-	```
-	This will:
-	- Use your `.env` for MongoDB connection
-	- Run all Vitest tests in `__tests__` (including `api.test.js`)
-	- Print API responses to the terminal for inspection
+## 🧑‍💻 Development & Testing
+- All API config in `frontend/src/services/api.js`
+- Backend tests: `cd backend && npm test` (see backend/README.md)
+- Frontend: Hot reload with Vite (`npm run dev`)
+- Backend: Auto-reload with nodemon (`npm run dev`)
+- Performance tips: see backend/PERFORMANCE_OPTIMIZATIONS.md
 
-If you want to always set `NODE_ENV=test` for tests, update the `test` script in `backend/package.json` to:
-```
-"test": "set NODE_ENV=test && vitest run"
-```
+---
 
-Test output will show counts and sample data for each API route.
+## 🐍 Data Ingestion (TSV → MongoDB)
+- Use `tsv_converter/ingest_tsv_to_mongo.py` to load review data from TSV files
+- Supports batch insert, upsert, dry-run, recursive folder scan, and big integer handling
+- See `tsv_converter/README.md` for full usage and troubleshooting
 
-### Connecting Frontend to API (Next Step)
-Replace direct mock imports with fetches (e.g., in page components):
-```javascript
-useEffect(() => {
-	fetch('http://localhost:5000/api/bot-data')
-		.then(r => r.json())
-		.then(setBotData);
-}, []);
-```
+---
 
-## Development Conventions
-- Keep UI colors in `components/constants.js` (not mixed with data).
-- Mock data lives in backend until real data sources are wired.
-- Use tab state in `App.jsx` for simple navigation (consider React Router later).
-- Avoid coupling chart components directly to raw fetch; normalize data via a small adapter if data shape changes.
+## 📝 Additional Resources
+- [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md): Feature breakdown, architecture, and backend requirements
+- [QUICK_START.md](QUICK_START.md): Step-by-step run instructions
+- [backend/README.md](backend/README.md): Backend scripts and utilities
+- [tsv_converter/README.md](tsv_converter/README.md): Data ingestion details
+- [backend/PERFORMANCE_OPTIMIZATIONS.md](backend/PERFORMANCE_OPTIMIZATIONS.md): Query and server tuning
 
-## Current TODO (Focused)
-1. Connect frontend to backend API (remove direct mock imports in React pages and make it receive from backend).
-2. Create local MongoDB database and collections for reviews/products/verification.
-3. Host MongoDB remotely on GCP (e.g., Atlas alternative or VM deployment) for persistence.
-4. Implement backend query endpoints against MongoDB for each dashboard case (bot stats, trending, verified analysis).
-5. Deployment (Docker + simple hosting) can follow after tasks 1–4.
+---
 
+## ❓ Troubleshooting
+- MongoDB connection errors: Ensure MongoDB is running and URI is correct in `.env`
+- CORS issues: Both servers must run on localhost (or configure CORS in backend)
+- Data not showing: Check backend logs for errors, ensure data is ingested
+- For more, see the troubleshooting sections in each component's README
+
+---
+
+## 📣 Contributing
+Pull requests and issues are welcome! Please see CONTRIBUTING.md if available.
 ## Environment Variables (Planned)
 `PORT` – backend port override
 `MONGO_URI` – MongoDB connection string (required for backend tests)
