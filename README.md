@@ -13,7 +13,20 @@ A full-stack analytics dashboard for Amazon reviews, focused on detecting suspic
  cd OncoQuery
 ```
 
-### 2. Set Up the Backend
+### 2. Provide Your Public IPv4 Address for Whitelisting
+```bash
+To ensure you can connect to MongoDB hosted on Google Cloud Platform (GCP), we need to add your current public IPv4 address to our firewall whitelist.
+Find your public IPv4 address:
+Visit a service like What Is My IP Address? or simply search "what is my IP" on Google.
+
+Note the IPv4 address displayed. It is a 32-bit address, typically formatted as four sets of numbers separated by dots (e.g., 192.0.2.1).
+
+Send the IPv4 address:
+Please send this exact IPv4 address to soh263@emory.edu.
+Once we receive your IP, we will add it to the GCP firewall rules, which typically takes a few minutes. We will notify you when access is granted.
+```
+
+### 3. Set Up the Backend
 ```bash
 cd backend
 cp .env.example .env   # Or create .env manually (see below)
@@ -28,7 +41,7 @@ npm run dev            # or: node index.js
   PORT=5000
   ```
 
-### 3. Set Up the Frontend
+### 4. Set Up the Frontend
 ```bash
 cd ../frontend
 npm install
