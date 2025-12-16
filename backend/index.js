@@ -8,8 +8,8 @@ import { MongoClient } from "mongodb";
 
 dotenv.config();
 
-const mongoUrl = process.env.MONGO_URI || "mongodb://localhost:27017";
-const dbName = process.env.MONGO_DB_NAME || "localhost";
+const mongoUrl = process.env.MONGO_URI || "mongodb://136.119.60.82:27017/oncoquery";
+const dbName = process.env.MONGO_DB_NAME || "oncoquery";
 let db;
 
 const app = express();
@@ -667,24 +667,37 @@ app.get("/api/helpful-reviews", async (req, res) => {
       dateFilter.product_category = req.query.category;
     }
     
-    // Get total count first for random offset calculation (like trending-products, verified-analysis)
+    // Get total count for deterministic sampling
     const totalReviews = await collection.countDocuments(dateFilter);
     
-    // Pseudo-random sampling: pick random offset within the range
+    // Use deterministic "random" offset based on query parameters
+    // This ensures all pages use the same sample for consistent sorting
     const sampleSize = 1000;
-    const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
+    const queryKey = `${startDate}-${endDate}-${req.query.category || 'All'}`;
+    // Simple hash function to generate consistent offset
+    let hash = 0;
+    for (let i = 0; i < queryKey.length; i++) {
+      const char = queryKey.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    const randomOffset = Math.abs(hash) % Math.max(1, totalReviews - sampleSize);
     
-    const pipeline = [
+    // Count pipeline to get total matching items (after sampling and filtering)
+    const countPipeline = [
       // 1. MATCH reviews in date range (and category if provided)
       { $match: dateFilter },
       
-      // 2. SKIP to random offset (pseudo-random sampling)
+      // 2. Sort by _id for consistent ordering before sampling
+      { $sort: { _id: 1 } },
+      
+      // 3. SKIP to deterministic offset (consistent sampling)
       { $skip: randomOffset },
       
-      // 3. LIMIT to sample size
+      // 4. LIMIT to sample size
       { $limit: sampleSize },
       
-      // 4. Convert vote fields to numbers for proper filtering and sorting
+      // 5. Convert vote fields to numbers for proper filtering
       { $addFields: {
         helpful_votes_num: { 
           $convert: { 
@@ -704,14 +717,53 @@ app.get("/api/helpful-reviews", async (req, res) => {
         }
       }},
       
-      // 5. Filter by votes AFTER conversion
+      // 6. Filter by votes AFTER conversion
       { $match: { total_votes_num: { $gte: 5 } } },
       
-      // 6. Sort using converted numeric fields
+      // 7. Count total matching items
+      { $count: "total" }
+    ];
+    
+    const dataPipeline = [
+      // 1. MATCH reviews in date range (and category if provided)
+      { $match: dateFilter },
+      
+      // 2. Sort by _id for consistent ordering before sampling
+      { $sort: { _id: 1 } },
+      
+      // 3. SKIP to deterministic offset (consistent sampling)
+      { $skip: randomOffset },
+      
+      // 4. LIMIT to sample size
+      { $limit: sampleSize },
+      
+      // 5. Convert vote fields to numbers for proper filtering and sorting
+      { $addFields: {
+        helpful_votes_num: { 
+          $convert: { 
+            input: "$helpful_votes", 
+            to: "int", 
+            onError: 0,
+            onNull: 0
+          } 
+        },
+        total_votes_num: { 
+          $convert: { 
+            input: "$total_votes", 
+            to: "int", 
+            onError: 0,
+            onNull: 0
+          } 
+        }
+      }},
+      
+      // 6. Filter by votes AFTER conversion
+      { $match: { total_votes_num: { $gte: 5 } } },
+      
+      // 7. Sort using converted numeric fields (sort within the consistent sample)
       { $sort: { helpful_votes_num: -1, total_votes_num: -1 } },
       
-      // 7. Early limit for pagination
-      { $limit: skip + limit },
+      // 8. Apply pagination (skip and limit after sorting)
       { $skip: skip },
       { $limit: limit },
       
@@ -726,25 +778,30 @@ app.get("/api/helpful-reviews", async (req, res) => {
       }}
     ];
     
-    const data = await collection.aggregate(pipeline, { 
-      allowDiskUse: QUERY_CONFIG.allowDiskUse
-    }).toArray();
+    // Get count and data in parallel
+    const [countResult, data] = await Promise.all([
+      collection.aggregate(countPipeline, { 
+        allowDiskUse: QUERY_CONFIG.allowDiskUse
+      }).toArray(),
+      collection.aggregate(dataPipeline, { 
+        allowDiskUse: QUERY_CONFIG.allowDiskUse
+      }).toArray()
+    ]);
     
+    const totalMatchingItems = countResult[0]?.total || 0;
+    const totalPages = Math.ceil(totalMatchingItems / limit);
     const duration = Date.now() - startTime;
-    const totalPages = Math.ceil(data.length / limit); // Approximate pages from sample
     
     res.json({
       returned: data.length,
       page,
       limit,
-      totalReviews,
-      sampleSize,
-      randomOffset,
+      totalMatchingItems,
       totalPages,
-      hasMore: page < totalPages,
+      hasMore: page < totalPages && data.length === limit,
       dateRange: { startDate, endDate },
       weeksBack,
-      message: `${data.length} most helpful reviews from ${sampleSize.toLocaleString()} sample at offset ${randomOffset.toLocaleString()} (${totalReviews.toLocaleString()} total reviews in last ${weeksBack} weeks, ${duration}ms)`,
+      message: `${data.length} most helpful reviews from ${sampleSize.toLocaleString()} sample (${totalMatchingItems.toLocaleString()} total matching, ${duration}ms)`,
       data
     });
   } catch (err) {
@@ -778,21 +835,33 @@ app.get("/api/controversial-reviews", async (req, res) => {
       dateFilter.product_category = req.query.category;
     }
     
-    // Get total count first for random offset calculation
+    // Get total count for deterministic sampling
     const totalReviews = await collection.countDocuments(dateFilter);
     
-    // Pseudo-random sampling: pick random offset within the range
+    // Use deterministic "random" offset based on query parameters
+    // This ensures all pages use the same sample for consistent sorting
     const sampleSize = 1000;
-    const randomOffset = Math.floor(Math.random() * Math.max(0, totalReviews - sampleSize));
+    const queryKey = `${startDate}-${endDate}-${req.query.category || 'All'}`;
+    // Simple hash function to generate consistent offset
+    let hash = 0;
+    for (let i = 0; i < queryKey.length; i++) {
+      const char = queryKey.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    const randomOffset = Math.abs(hash) % Math.max(1, totalReviews - sampleSize);
     
-    const pipeline = [
+    // Count pipeline to get total matching items (after sampling and filtering)
+    const countPipeline = [
       // 1. MATCH reviews in date range (and category if provided)
       { $match: dateFilter },
-      // 2. SKIP to random offset (pseudo-random sampling)
+      // 2. Sort by _id for consistent ordering before sampling
+      { $sort: { _id: 1 } },
+      // 3. SKIP to deterministic offset (consistent sampling)
       { $skip: randomOffset },
-      // 3. LIMIT to sample size
+      // 4. LIMIT to sample size
       { $limit: sampleSize },
-      // 4. Convert vote fields to numbers
+      // 5. Convert vote fields to numbers
       { $addFields: {
         helpful_votes_num: { 
           $convert: { 
@@ -809,23 +878,72 @@ app.get("/api/controversial-reviews", async (req, res) => {
             onError: 0,
             onNull: 0
           } 
-        },
+        }
+      }},
+      // 6. Calculate unhelpful votes using already converted fields
+      { $addFields: {
         unhelpful_votes_num: {
-          $subtract: [
-            { $convert: { input: "$total_votes", to: "int", onError: 0, onNull: 0 } },
-            { $convert: { input: "$helpful_votes", to: "int", onError: 0, onNull: 0 } }
+          $subtract: ["$total_votes_num", "$helpful_votes_num"]
+        }
+      }},
+      // 7. Filter by votes AFTER conversion
+      { $match: { total_votes_num: { $gte: 10 } } },
+      // 8. Count total matching items
+      { $count: "total" }
+    ];
+    
+    const dataPipeline = [
+      // 1. MATCH reviews in date range (and category if provided)
+      { $match: dateFilter },
+      // 2. Sort by _id for consistent ordering before sampling
+      { $sort: { _id: 1 } },
+      // 3. SKIP to deterministic offset (consistent sampling)
+      { $skip: randomOffset },
+      // 4. LIMIT to sample size
+      { $limit: sampleSize },
+      // 5. Convert vote fields to numbers
+      { $addFields: {
+        helpful_votes_num: { 
+          $convert: { 
+            input: "$helpful_votes", 
+            to: "int", 
+            onError: 0,
+            onNull: 0
+          } 
+        },
+        total_votes_num: { 
+          $convert: { 
+            input: "$total_votes", 
+            to: "int", 
+            onError: 0,
+            onNull: 0
+          } 
+        }
+      }},
+      // 6. Calculate unhelpful votes using already converted fields
+      { $addFields: {
+        unhelpful_votes_num: {
+          $subtract: ["$total_votes_num", "$helpful_votes_num"]
+        }
+      }},
+      // 7. Filter by votes AFTER conversion
+      { $match: { total_votes_num: { $gte: 10 } } },
+      // 8. Calculate controversy_score BEFORE sorting (percentage of unhelpful votes)
+      { $addFields: {
+        controversy_score: {
+          $cond: [
+            { $gt: ["$total_votes_num", 0] },
+            { $round: [{ $multiply: [{ $divide: ["$unhelpful_votes_num", "$total_votes_num"] }, 100] }, 1] },
+            0
           ]
         }
       }},
-      // 5. Filter by votes AFTER conversion
-      { $match: { total_votes_num: { $gte: 10 } } },
-      // 6. Sort by unhelpful votes descending (most controversial first), then by total_votes descending
-      { $sort: { unhelpful_votes_num: -1, total_votes_num: -1 } },
-      // 7. Early limit for pagination
-      { $limit: skip + limit },
+      // 9. Sort by controversy_score descending (most controversial first), then by total_votes descending
+      { $sort: { controversy_score: -1, total_votes_num: -1 } },
+      // 10. Apply pagination
       { $skip: skip },
       { $limit: limit },
-      // 8. Project final fields
+      // 11. Project final fields
       { $project: {
         product_title: 1, product_category: 1, star_rating: 1,
         review_headline: 1, review_body: 1, review_date: 1,
@@ -834,35 +952,34 @@ app.get("/api/controversial-reviews", async (req, res) => {
         total_votes: 1,    // Keep original
         customer_id: 1,
         unhelpful_votes: "$unhelpful_votes_num",
-        controversy_score: {
-          $cond: [
-            { $gt: ["$total_votes_num", 0] },
-            { $round: [{ $multiply: [{ $divide: ["$unhelpful_votes_num", "$total_votes_num"] }, 100] }, 1] },
-            0
-          ]
-        }
+        controversy_score: 1  // Use already calculated value
       }}
     ];
     
-    const data = await collection.aggregate(pipeline, { 
-      allowDiskUse: QUERY_CONFIG.allowDiskUse
-    }).toArray();
+    // Get count and data in parallel
+    const [countResult, data] = await Promise.all([
+      collection.aggregate(countPipeline, { 
+        allowDiskUse: QUERY_CONFIG.allowDiskUse
+      }).toArray(),
+      collection.aggregate(dataPipeline, { 
+        allowDiskUse: QUERY_CONFIG.allowDiskUse
+      }).toArray()
+    ]);
     
+    const totalMatchingItems = countResult[0]?.total || 0;
+    const totalPages = Math.ceil(totalMatchingItems / limit);
     const duration = Date.now() - startTime;
-    const totalPages = Math.ceil(data.length / limit); // Approximate pages from sample
     
     res.json({
       returned: data.length,
       page,
       limit,
-      totalReviews,
-      sampleSize,
-      randomOffset,
+      totalMatchingItems,
       totalPages,
-      hasMore: page < totalPages,
+      hasMore: page < totalPages && data.length === limit,
       dateRange: { startDate, endDate },
       weeksBack,
-      message: `${data.length} controversial reviews from ${sampleSize.toLocaleString()} sample at offset ${randomOffset.toLocaleString()} (${totalReviews.toLocaleString()} total reviews in last ${weeksBack} weeks, ${duration}ms)`,
+      message: `${data.length} controversial reviews from ${sampleSize.toLocaleString()} sample (${totalMatchingItems.toLocaleString()} total matching, ${duration}ms)`,
       data
     });
   } catch (err) {
@@ -872,7 +989,7 @@ app.get("/api/controversial-reviews", async (req, res) => {
 });
 
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

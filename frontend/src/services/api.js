@@ -1,9 +1,9 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:5001/api';
 
 // Helper to safe-fetch JSON with fallback error message
 async function safeFetchJson(url) {
-  const res = await fetch(url);
+const res = await fetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Request failed: ${res.status} ${res.statusText} ${text}`);
@@ -103,39 +103,41 @@ export const api = {
   // Helpful/Controversial Reviews (backend: /api/helpful-reviews and /api/controversial-reviews)
 
   // Accepts paramsObj: { category, weeksBack, year, month, week }, page
-  getHelpfulReviews: async (paramsObj = {}, page = 1) => {
-    try {
-      const params = new URLSearchParams();
-      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
-      if (paramsObj.weeksBack != null) params.append('weeksBack', paramsObj.weeksBack.toString());
-      if (paramsObj.year) params.append('year', paramsObj.year);
-      if (paramsObj.month) params.append('month', paramsObj.month);
-      if (paramsObj.week) params.append('week', paramsObj.week);
-      params.append('page', page.toString());
-      const json = await safeFetchJson(`${API_BASE_URL}/helpful-reviews?${params}`);
-      return json.data || json || [];
-    } catch (err) {
-      console.error('Failed to fetch helpful reviews:', err);
-      return [];
-    }
-  },
+  getHelpfulReviews: async (paramsObj = {}, page = 1) => {
+    try {
+      const params = new URLSearchParams();
+      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
+      if (paramsObj.weeksBack != null) params.append('weeksBack', paramsObj.weeksBack.toString());
+      if (paramsObj.year) params.append('year', paramsObj.year);
+      if (paramsObj.month) params.append('month', paramsObj.month);
+      if (paramsObj.week) params.append('week', paramsObj.week);
+      params.append('page', page.toString());
+      const json = await safeFetchJson(`${API_BASE_URL}/helpful-reviews?${params}`);
+      // Return full response object to preserve pagination metadata
+      return json;
+    } catch (err) {
+      console.error('Failed to fetch helpful reviews:', err);
+      return { data: [], hasMore: false, totalPages: 1 };
+    }
+  },
 
-  getControversialReviews: async (paramsObj = {}, page = 1) => {
-    try {
-      const params = new URLSearchParams();
-      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
-      if (paramsObj.weeksBack != null) params.append('weeksBack', paramsObj.weeksBack.toString());
-      if (paramsObj.year) params.append('year', paramsObj.year);
-      if (paramsObj.month) params.append('month', paramsObj.month);
-      if (paramsObj.week) params.append('week', paramsObj.week);
-      params.append('page', page.toString());
-      const json = await safeFetchJson(`${API_BASE_URL}/controversial-reviews?${params}`);
-      return json.data || json || [];
-    } catch (err) {
-      console.error('Failed to fetch controversial reviews:', err);
-      return [];
-    }
-  },
+  getControversialReviews: async (paramsObj = {}, page = 1) => {
+    try {
+      const params = new URLSearchParams();
+      if (paramsObj.category && paramsObj.category !== 'All') params.append('category', paramsObj.category);
+      if (paramsObj.weeksBack != null) params.append('weeksBack', paramsObj.weeksBack.toString());
+      if (paramsObj.year) params.append('year', paramsObj.year);
+      if (paramsObj.month) params.append('month', paramsObj.month);
+      if (paramsObj.week) params.append('week', paramsObj.week);
+      params.append('page', page.toString());
+      const json = await safeFetchJson(`${API_BASE_URL}/controversial-reviews?${params}`);
+      // Return full response object to preserve pagination metadata
+      return json;
+    } catch (err) {
+      console.error('Failed to fetch controversial reviews:', err);
+      return { data: [], hasMore: false, totalPages: 1 };
+    }
+  },
 
   // Get distinct categories from database
   getCategories: async () => {

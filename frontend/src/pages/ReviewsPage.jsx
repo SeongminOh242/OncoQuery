@@ -15,8 +15,9 @@ function ReviewsPage() {
   const [error, setError] = useState(null);
   const [queryTime, setQueryTime] = useState(null);
   const [hasRun, setHasRun] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalPages, setTotalPages] = useState(1);
   const [categories, setCategories] = useState(['All']);
-  const [meta, setMeta] = useState(null);
   const [yearOptions, setYearOptions] = useState([]);
   const [monthOptions, setMonthOptions] = useState([]);
   const [weekOptions, setWeekOptions] = useState([]);
@@ -39,7 +40,6 @@ function ReviewsPage() {
     });
     // Fetch meta for date range
     api.getOverviewMeta().then(meta => {
-      setMeta(meta);
       // Build year options
       if (meta && meta.earliestDate && meta.latestDate) {
         const startYear = parseInt(meta.earliestDate.slice(0, 4));
@@ -53,7 +53,7 @@ function ReviewsPage() {
     });
   }, []);
 
-  const runQuery = async () => {
+  const runQuery = async (pageToUse = currentPage) => {
     try {
       setLoading(true);
       setError(null);
@@ -65,23 +65,45 @@ function ReviewsPage() {
         month: month || undefined,
         week: week || undefined
       };
+      let reviewData;
       if (reviewsSubTab === 'helpful') {
-        const reviewData = await api.getHelpfulReviews(params, currentPage);
-        setReviews(Array.isArray(reviewData) ? reviewData : []);
+        reviewData = await api.getHelpfulReviews(params, pageToUse);
       } else {
-        const reviewData = await api.getControversialReviews(params, currentPage);
-        setReviews(Array.isArray(reviewData) ? reviewData : []);
+        reviewData = await api.getControversialReviews(params, pageToUse);
       }
+      
+      // Handle response - could be object with data property or array
+      if (reviewData && typeof reviewData === 'object' && !Array.isArray(reviewData)) {
+        setReviews(reviewData.data || []);
+        // Use backend's calculated totalPages and hasMore
+        setTotalPages(reviewData.totalPages || 1);
+        setHasMore(reviewData.hasMore || false);
+      } else {
+        // Fallback for array response
+        const reviewsArray = Array.isArray(reviewData) ? reviewData : [];
+        setReviews(reviewsArray);
+        setHasMore(false);
+        setTotalPages(1);
+      }
+      
       const endTime = performance.now();
       setQueryTime(((endTime - startTime) / 1000).toFixed(2));
       setHasRun(true);
     } catch (err) {
       setError(err.message);
       console.error('Error loading reviews data:', err);
+      setReviews([]);
+      setHasMore(false);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   };
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, year, month, week, reviewsSubTab]);
 
   return (
     <div className="space-y-6">
@@ -223,7 +245,13 @@ function ReviewsPage() {
             )}
           </div>
 
-          <Pagination currentPage={currentPage} onPageChange={setCurrentPage} onRunQuery={runQuery} />
+          <Pagination 
+            currentPage={currentPage} 
+            onPageChange={setCurrentPage} 
+            onRunQuery={runQuery}
+            hasMore={hasMore}
+            totalPages={totalPages}
+          />
         </div>
       )}
     </div>
@@ -304,12 +332,16 @@ function ReviewCard({ review, showHelpfulStats, showControversialStats }) {
   );
 }
 
-function Pagination({ currentPage, onPageChange, onRunQuery }) {
+function Pagination({ currentPage, onPageChange, onRunQuery, hasMore = false, totalPages = 1 }) {
   const handlePageChange = async (newPage) => {
     onPageChange(newPage);
-    // Wait for state to update, then run query
-    setTimeout(() => onRunQuery(), 0);
+    // Pass the new page number directly to runQuery to avoid stale state
+    onRunQuery(newPage);
   };
+
+  // Hide Next button when hasMore is false (most reliable indicator)
+  // Also hide if we're at or beyond totalPages as a safety check
+  const showNextButton = hasMore && currentPage < totalPages;
 
   return (
     <div className="flex justify-center items-center gap-4 mt-6">
@@ -321,12 +353,14 @@ function Pagination({ currentPage, onPageChange, onRunQuery }) {
         Previous
       </button>
       <span className="text-gray-600">Page {currentPage}</span>
-      <button
-        onClick={() => handlePageChange(currentPage + 1)}
-        className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-      >
-        Next
-      </button>
+      {showNextButton && (
+        <button
+          onClick={() => handlePageChange(currentPage + 1)}
+          className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+        >
+          Next
+        </button>
+      )}
     </div>
   );
 }

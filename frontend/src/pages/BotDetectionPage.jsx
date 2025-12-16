@@ -115,6 +115,11 @@ function BotDetectionPage() {
     runQuery(newPage);
   };
 
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [category, year, month, week]);
+
   return (
     <div className="space-y-6">
       {/* Query Controls */}

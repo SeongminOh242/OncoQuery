@@ -115,10 +115,10 @@ function VerifiedAnalysisPage() {
     setPage(newPage);
     runQuery(newPage);
   };
-  // Reset page to 1 when weeksBack changes
+  // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [weeksBack]);
+  }, [category, year, month, week]);
 
   return (
     <div className="space-y-6">

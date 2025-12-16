@@ -114,10 +114,10 @@ function TrendingProductsPage() {
     setPage(newPage);
     runQuery(newPage);
   };
-  // Reset page to 1 when weeksBack changes
-  React.useEffect(() => {
+  // Reset page to 1 when filters change
+  useEffect(() => {
     setPage(1);
-  }, [weeksBack]);
+  }, [category, year, month, week]);
 
   if (loading) {
     return (
