@@ -23,8 +23,8 @@ npm run dev            # or: node index.js
 - Ensure MongoDB is running locally (default: mongodb://localhost:27017)
 - Example .env:
   ```
-  MONGO_URI=mongodb://localhost:27017
-  MONGO_DB_NAME=oncoquery
+  MONGO_URI="mongodb://136.119.60.82:27017/oncoquery"
+  MONGO_DB_NAME="oncoquery"
   PORT=5000
   ```
 
